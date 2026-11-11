@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AuditPrompter — Assistente de Auditoria Interna</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- LEFT SIDEBAR NAVIGATION -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="status-led" id="liveStatusDot"></span>
+        <div>
+          <div class="brand-name">AuditPrompter</div>
+          <div class="brand-sub">Auditoria &amp; Controles</div>
+        </div>
+      </div>
+
+      <!-- PROJETO / AUDITORIA ATIVA -->
+      <div class="sidebar-project-card" id="btnSidebarProjectQuick" title="Clique para gerenciar Projetos, abrir auditorias anteriores ou iniciar um Novo Projeto">
+        <div class="spc-top">
+          <span class="spc-code" id="sidebarProjectCode">AUD-2026-01</span>
+          <span class="spc-switch">Trocar ▾</span>
+        </div>
+        <div class="spc-name" id="sidebarProjectName">Projeto de Auditoria</div>
+        <div class="spc-meeting" id="sidebarMeetingTitle">Reunião 01 — Walkthrough</div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item" data-view="sessions">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span>Projetos &amp; Histórico</span>
+          <span class="nav-badge" id="projectsCountBadge">1</span>
+        </button>
+
+        <button class="nav-item active" data-view="live">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span>Mapeamento Ao Vivo</span>
+        </button>
+
+        <button class="nav-item" data-view="transcript">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Transcrição &amp; Momentos</span>
+          <span class="nav-badge" id="transcriptCountBadge">0</span>
+        </button>
+
+        <button class="nav-item" data-view="scope">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span>Preparação &amp; Checklist</span>
+          <span class="nav-badge" id="checklistProgressPill">0/8</span>
+        </button>
+
+        <button class="nav-item" data-view="matrix">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span>Riscos, Controles &amp; PBC</span>
+          <span class="nav-badge" id="sidebarMatrixBadge">0</span>
+        </button>
+
+        <button class="nav-item" data-view="report">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span>Carta PBC &amp; Relatórios</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="save-indicator" id="saveIndicator">Sessão salva automaticamente</div>
+        <button class="sidebar-util-btn" id="btnOpenPiP" title="Abrir Teleprompter em janela flutuante sobre o Teams/Meet (Ctrl+Alt+F)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="12" y="12" width="7" height="7" rx="1"/></svg>
+          <span>Janela Flutuante</span>
+        </button>
+
+        <button class="sidebar-util-btn" id="btnShowShortcuts">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10"/><line x1="10" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="14" y2="10"/><line x1="7" y1="14" x2="17" y2="14"/></svg>
+          <span>Atalhos de Teclado</span>
+        </button>
+
+        <button class="sidebar-util-btn" id="btnToggleTheme">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
+          <span id="themeBtnLabel">Tema: Claro</span>
+        </button>
+
+        <button class="sidebar-util-btn" id="btnOpenSettings">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Configurações de IA</span>
+          <span id="apiKeyStatusBadge" class="status-tag">Local</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT AREA -->
+    <div class="main-area">
+      <header class="topbar">
+        <div class="active-topic-summary">
+          <span class="topic-label" id="headerProjectCodePill">PROJETO</span>
+          <span class="topic-name" id="headerTopicDisplay"></span>
+          <button class="btn-link" id="btnEditTopicQuick">Editar escopo</button>
+        </div>
+
+        <div class="audio-controls">
+          <div class="audio-pill" id="sysAudioCard">
+            <button class="audio-pill-btn" id="btnToggleSystemAudio" title="Capturar áudio da reunião (Teams, Meet, Zoom) — fala do auditado">
+              <span class="led-indicator" id="sysLed"></span>
+              <span>Áudio da Reunião</span>
+              <span class="audio-state-label" id="sysAudioStateText">Off</span>
+            </button>
+            <div class="mini-meter"><div class="mini-meter-fill" id="sysVuBar"></div></div>
+          </div>
+
+          <div class="audio-pill" id="micAudioCard">
+            <button class="audio-pill-btn" id="btnToggleMicAudio" title="Capturar seu microfone — fala do auditor">
+              <span class="led-indicator" id="micLed"></span>
+              <span>Microfone</span>
+              <span class="audio-state-label" id="micAudioStateText">Off</span>
+            </button>
+            <div class="mini-meter"><div class="mini-meter-fill" id="micVuBar"></div></div>
+          </div>
+
+          <button class="btn-primary-action" id="btnAnalyzeNow" title="Gerar insight com o que foi falado (Ctrl+Alt+A ou Alt+Espaço)">
+            <span id="analyzeBtnSpinner" class="spinner hidden"></span>
+            <span id="analyzeBtnIcon">Gerar Insight Agora</span>
+          </button>
+          <span class="cycle-readout" id="cycleStatusText">Standby</span>
+        </div>
+      </header>
+
+      <!-- Aviso persistente de captura (ex.: fala do auditado não transcrita) -->
+      <div class="capture-warning hidden" id="captureWarning"></div>
+
+      <!-- ================================================================= -->
+      <!-- VIEW: MAPEAMENTO AO VIVO                                          -->
+      <!-- ================================================================= -->
+      <main class="view-container active" id="view-live">
+        <div class="live-capture-bar">
+          <div class="live-listening-status">
+            <span class="caption-status-dot" id="captionDot"></span>
+            <span class="caption-text" id="liveInterimText">Escuta pronta — conecte o Áudio da Reunião / Microfone ou registre um ponto discutido ao lado.</span>
+          </div>
+
+          <div class="live-quick-actions">
+            <select id="speakerSelect" title="Quem falou">
+              <option value="Auditado">Auditado</option>
+              <option value="Auditor">Auditor (eu)</option>
+              <option value="Nota do auditor">Nota / Observação</option>
+            </select>
+            <input type="text" id="manualTranscriptInput" placeholder="Resumo rápido ou fala do auditado (Enter p/ mapear) — Ctrl+Alt+N" />
+            <button class="btn-solid-sm" id="btnSendManualNote">Mapear</button>
+            <button class="btn-inline" id="btnMarkMoment" title="Marcar momento importante como ponto de evidência (Ctrl+Alt+M)">★ Momento</button>
+            <button class="btn-inline" id="btnSimulateSpeech" title="Simular uma fala de auditado para demonstração">Simular</button>
+          </div>
+        </div>
+
+        <div class="board-toolbar">
+          <div class="directive-inline">
+            <span class="directive-tag">FOCO ATUAL</span>
+            <span class="directive-text" id="liveCoachingText"></span>
+          </div>
+
+          <div class="board-controls">
+            <div class="segmented-control" id="tpFilterTabs">
+              <button class="seg-btn active" data-filter="all">Todos (<span id="countQuestions">0</span>)</button>
+              <button class="seg-btn" data-filter="pending">Pendentes</button>
+              <button class="seg-btn" data-filter="planned">Planejadas</button>
+              <button class="seg-btn" data-filter="emergent">Surgidas</button>
+              <button class="seg-btn" data-filter="gaps">Com Risco</button>
+            </div>
+            <button class="btn-inline" id="btnClearEmergent" title="Limpar perguntas geradas ao vivo mantendo o roteiro planejado">Limpar surgidas</button>
+            <button class="btn-inline" id="btnFontDec" title="Diminuir fonte">A-</button>
+            <button class="btn-inline" id="btnFontInc" title="Aumentar fonte">A+</button>
+          </div>
+        </div>
+
+        <div class="paired-board-headers">
+          <div class="col-hdr-left">ASSUNTO DISCUTIDO / PROCESSO MAPEADO</div>
+          <div class="col-hdr-right">O QUE PERGUNTAR &amp; PEDIR NA TELA (IPE)</div>
+        </div>
+
+        <div class="paired-board-stream" id="pairedStreamContainer"></div>
+      </main>
+
+      <!-- ================================================================= -->
+      <!-- VIEW: TRANSCRIÇÃO & MOMENTOS                                      -->
+      <!-- ================================================================= -->
+      <section class="view-container" id="view-transcript">
+        <div class="page-scroll">
+          <div class="two-col-grid">
+            <div class="page-card">
+              <div class="card-header-flex">
+                <div>
+                  <h2 class="section-heading">Transcrição Literal</h2>
+                  <p class="section-desc">Registro do que foi dito, com horário e origem. É a base de evidência; os resumos dos cartões são sínteses da IA e devem ser conferidos contra este registro.</p>
+                </div>
+              </div>
+              <div class="toolbar-row">
+                <input type="search" id="transcriptSearch" placeholder="Buscar na transcrição..." />
+                <button class="btn-inline" id="btnClearTranscript">Limpar transcrição</button>
+              </div>
+              <div class="transcript-feed" id="transcriptFeed"></div>
+            </div>
+
+            <div class="page-card">
+              <div class="card-header-flex">
+                <div>
+                  <h2 class="section-heading">Momentos Marcados (<span id="momentsCountBadge">0</span>)</h2>
+                  <p class="section-desc">Pontos de evidência marcados durante a reunião (Ctrl+Alt+M). Entram no papel de trabalho.</p>
+                </div>
+              </div>
+              <div class="matrix-list" id="momentsList"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- VIEW: PREPARAÇÃO, ESCOPO & CHECKLIST                              -->
+      <!-- ================================================================= -->
+      <section class="view-container" id="view-scope">
+        <div class="page-scroll">
+          <div class="page-card">
+            <h2 class="section-heading">Escopo &amp; Tema da Reunião</h2>
+            <p class="section-desc">Configure o processo que será mapeado para que a IA gere o roteiro inicial e adapte os insights ao longo da conversa.</p>
+
+            <div class="scope-form-grid">
+              <div class="form-group">
+                <label for="templateSelect">Modelo Pré-Configurado de Auditoria</label>
+                <select id="templateSelect">
+                  <option value="custom">Personalizado (Digitar abaixo)</option>
+                  <option value="p2p">Compras e Pagamentos (Procure-to-Pay / P2P)</option>
+                  <option value="iam">Gestão de Acessos e Identidades (ITGC / IAM)</option>
+                  <option value="o2c">Vendas, Crédito e Recebimento (Order-to-Cash / O2C)</option>
+                  <option value="r2r">Fechamento Contábil e Conciliações (R2R)</option>
+                  <option value="hr">Folha de Pagamento e Movimentações (RH)</option>
+                  <option value="inv">Estoque, Inventário e Logística</option>
+                  <option value="fraud">Prevenção a Fraudes e Pagamentos Críticos</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="auditMethodologySelect">Metodologia / Framework</label>
+                <select id="auditMethodologySelect">
+                  <option value="walkthrough_coso">Walkthrough Fim-a-Fim (TOD) + COSO ICIF</option>
+                  <option value="sox_ipe">Auditoria SOX + Rigor em Evidências (IPE)</option>
+                  <option value="itgc_sod">Auditoria de TI (ITGC) + Segregação de Funções (SoD)</option>
+                  <option value="operational_risk">Riscos Operacionais, Fraude e Eficiência</option>
+                </select>
+              </div>
+
+              <div class="form-group full-width">
+                <label for="auditTopicInput">Tema Principal / Processo Mapeado</label>
+                <input type="text" id="auditTopicInput" />
+              </div>
+
+              <div class="form-group full-width">
+                <label for="auditScopeInput">Sistemas Envolvidos, Área e Contexto Adicional</label>
+                <input type="text" id="auditScopeInput" />
+              </div>
+
+              <div class="form-group full-width">
+                <label for="participantsInput">Participantes (um por linha: Nome — Cargo/Área — Papel)</label>
+                <textarea id="participantsInput" rows="3" placeholder="Maria Silva — Gerente de Compras — Auditada&#10;João Souza — Auditor Interno — Condutor"></textarea>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn-solid" id="btnStartAuditTopic">Carregar Roteiro deste Tema</button>
+            </div>
+          </div>
+
+          <div class="page-card">
+            <h2 class="section-heading">Material de Preparação</h2>
+            <p class="section-desc">Cole ou importe a política, o procedimento, o fluxograma descrito, a RCM do ano anterior ou notas de planejamento. A IA compara o que for dito na reunião com o que está documentado e aponta divergências.</p>
+            <div class="form-group">
+              <textarea id="prepMaterialInput" rows="8" placeholder="Ex.: Política de Compras v3 — Alçadas: até R$ 50 mil gerente; acima de R$ 50 mil diretor..."></textarea>
+            </div>
+            <div class="toolbar-row">
+              <label class="btn-ghost file-btn">
+                Importar arquivo de texto (.txt, .md, .csv, .json)
+                <input type="file" id="prepFileInput" accept=".txt,.md,.csv,.json,.tsv,.log" multiple hidden />
+              </label>
+              <span class="hint-text" id="prepMaterialInfo">0 caracteres</span>
+            </div>
+            <p class="hint-text">PDF/Word: abra o arquivo, copie o texto e cole acima.</p>
+
+            <h3 class="sub-heading">Roteiro de Perguntas Planejadas</h3>
+            <p class="section-desc">Uma pergunta por linha. Elas aparecem no teleprompter marcadas como "Planejada", separadas das perguntas que surgirem na conversa.</p>
+            <div class="form-group">
+              <textarea id="plannedQuestionsInput" rows="5" placeholder="Quem aprova pedidos acima de R$ 50 mil?&#10;Como é tratado o cadastro de fornecedor novo?"></textarea>
+            </div>
+            <div class="form-actions">
+              <button class="btn-solid" id="btnApplyPlannedQuestions">Adicionar ao Teleprompter</button>
+            </div>
+          </div>
+
+          <div class="page-card">
+            <div class="card-header-flex">
+              <div>
+                <h2 class="section-heading">Checklist de Cobertura do Walkthrough</h2>
+                <p class="section-desc">Etapas metodológicas acompanhadas durante a entrevista. Clique para marcar ou desmarcar.</p>
+              </div>
+            </div>
+            <div class="progress-hairline" style="margin: 12px 0;">
+              <div class="progress-hairline-fill" id="checklistProgressBar" style="width: 0%"></div>
+            </div>
+            <div class="matrix-list" id="checklistContainer"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- VIEW: RISCOS, CONTROLES, PBC, PONTOS EM ABERTO                    -->
+      <!-- ================================================================= -->
+      <section class="view-container" id="view-matrix">
+        <div class="page-scroll">
+          <div class="ai-review-banner" id="aiReviewBanner"></div>
+          <div class="three-col-matrix">
+            <div class="page-card">
+              <div class="card-header-flex">
+                <h2 class="section-heading">Riscos &amp; Gaps (<span id="risksCountBadge">0</span>)</h2>
+                <button class="btn-inline" id="btnAddManualRisk">+ Risco</button>
+              </div>
+              <div class="matrix-list" id="risksList"></div>
+            </div>
+
+            <div class="page-card">
+              <div class="card-header-flex">
+                <h2 class="section-heading">Controles (<span id="controlsCountBadge">0</span>)</h2>
+                <button class="btn-inline" id="btnAddManualControl">+ Controle</button>
+              </div>
+              <div class="matrix-list" id="controlsTabContent"></div>
+            </div>
+
+            <div class="page-card">
+              <div class="card-header-flex">
+                <h2 class="section-heading">Evidências / PBC (<span id="pbcCountBadge">0</span>)</h2>
+                <button class="btn-inline" id="btnAddManualPbc">+ PBC</button>
+              </div>
+              <div class="matrix-list" id="pbcTabContent"></div>
+            </div>
+          </div>
+
+          <div class="two-col-grid" style="margin-top: 14px;">
+            <div class="page-card">
+              <div class="card-header-flex">
+                <h2 class="section-heading">Pontos em Aberto (<span id="openPointsCountBadge">0</span>)</h2>
+                <button class="btn-inline" id="btnAddOpenPoint">+ Ponto</button>
+              </div>
+              <p class="section-desc">Perguntas sem resposta, respostas contraditórias e pendências para o follow-up.</p>
+              <div class="matrix-list" id="openPointsList"></div>
+            </div>
+            <div class="page-card">
+              <div class="card-header-flex">
+                <h2 class="section-heading">Divergências: Documentado × Relatado (<span id="divergencesCountBadge">0</span>)</h2>
+              </div>
+              <p class="section-desc">Diferenças entre o material de preparação e o que foi dito na reunião.</p>
+              <div class="matrix-list" id="divergencesList"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- VIEW: CARTA DE SOLICITAÇÃO PBC (RFI), PAPEL DE TRABALHO & EXPORTS -->
+      <!-- ================================================================= -->
+      <section class="view-container" id="view-report">
+        <div class="page-scroll">
+          <!-- Sub-navegação de Relatórios -->
+          <div class="report-subnav-bar no-print">
+            <div class="segmented-control" id="reportSubTabs">
+              <button class="seg-btn active" data-rtab="pbc">Carta de Solicitação de Documentos &amp; Evidências (PBC / RFI)</button>
+              <button class="seg-btn" data-rtab="wp">Papel de Trabalho Completo, Ata, 5W2H &amp; Matriz RCM</button>
+            </div>
+          </div>
+
+          <!-- SUB-ABA 1: CARTA FORMAL DE SOLICITAÇÃO DE DOCUMENTOS E EVIDÊNCIAS (PBC / RFI) -->
+          <div id="reportPanePbc" class="report-pane active">
+            <div class="page-card no-print" style="margin-bottom: 14px;">
+              <div class="card-header-flex" style="margin-bottom: 10px;">
+                <div>
+                  <h2 class="section-heading">Parâmetros da Carta de Solicitação de Documentos e Evidências (Padrão IIA / COSO / SOX / IPE)</h2>
+                  <p class="section-desc">Configure o cabeçalho formal, consolide os itens discutidos na reunião com IA e exporte em Word (.docx), Excel Tracker (.xlsx), PDF ou copie formatado para o Outlook.</p>
+                </div>
+              </div>
+
+              <div class="pbc-meta-grid" id="pbcMetaForm">
+                <div class="form-group">
+                  <label for="pbcRefInput">Código / Referência (RFI)</label>
+                  <input type="text" id="pbcRefInput" placeholder="Ex.: RFI-AUD-2026-01" />
+                </div>
+                <div class="form-group">
+                  <label for="pbcPhaseSelect">Fase Metodológica da Auditoria</label>
+                  <select id="pbcPhaseSelect">
+                    <option value="Walkthrough & Teste de Desenho (TOD)">Walkthrough &amp; Teste de Desenho (TOD)</option>
+                    <option value="Planejamento, Mapeamento & Universo Analítico">Planejamento, Mapeamento &amp; Universo Analítico</option>
+                    <option value="Teste de Efetividade Operacional (TOE / Amostragem)">Teste de Efetividade Operacional (TOE / Amostragem)</option>
+                    <option value="Follow-up & Validação de Planos de Ação">Follow-up &amp; Validação de Planos de Ação</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="pbcRecipientInput">Destinatário / Ponto Focal (Área Auditada)</label>
+                  <input type="text" id="pbcRecipientInput" placeholder="Ex.: Gerência de Compras / Suprimentos" />
+                </div>
+                <div class="form-group">
+                  <label for="pbcAuditorInput">Auditor(es) Responsável(is)</label>
+                  <input type="text" id="pbcAuditorInput" placeholder="Ex.: Auditoria Interna & Controles Internos" />
+                </div>
+                <div class="form-group">
+                  <label for="pbcPeriodInput">Período-Base (População / Corte)</label>
+                  <input type="text" id="pbcPeriodInput" placeholder="Ex.: Jan/2026 a Out/2026 (ou últimos 12 meses)" />
+                </div>
+                <div class="form-group">
+                  <label for="pbcSlaInput">Prazo Limite de Atendimento (SLA)</label>
+                  <input type="text" id="pbcSlaInput" placeholder="Ex.: 16/11/2026 (5 dias úteis)" />
+                </div>
+                <div class="form-group full-span-2">
+                  <label for="pbcChannelInput">Canal Oficial e Seguro de Entrega (LGPD / Governança)</label>
+                  <input type="text" id="pbcChannelInput" placeholder="Ex.: Pasta exclusiva da Auditoria no SharePoint / OneDrive Corporativo / Portal GRC" />
+                </div>
+                <div class="form-group full-span-4">
+                  <label for="pbcIntroTextarea">Texto de Abertura / Contextualização da Solicitação (Editável)</label>
+                  <textarea id="pbcIntroTextarea" rows="3" placeholder="Texto institucional de abertura da carta de solicitação..."></textarea>
+                </div>
+              </div>
+
+              <div class="report-toolbar" style="margin-top: 12px; margin-bottom: 0; padding-bottom: 0; border-bottom: none;">
+                <button class="btn-solid" id="btnGenerateAiPbc">Consolidar / Enriquecer Carta PBC com IA</button>
+                <button class="btn-ghost" id="btnImportMeetingScreensToPbc">Importar Sugestões da Reunião</button>
+                <button class="btn-ghost" id="btnAddPbcFromReport">+ Incluir Documento / Evidência</button>
+                <span class="toolbar-divider"></span>
+                <button class="btn-solid-navy" id="btnExportPbcDocx">Baixar Carta em Word (.docx)</button>
+                <button class="btn-solid-emerald" id="btnExportPbcXlsx">Baixar Planilha Tracker (.xlsx)</button>
+                <button class="btn-ghost" id="btnCopyRichPbcEmail">Copiar Carta Formatada p/ E-mail (Outlook)</button>
+                <button class="btn-ghost" id="btnCopyPbcChat">Copiar Resumo p/ Teams</button>
+                <button class="btn-ghost" id="btnPrintPbcLetter">Imprimir / PDF</button>
+              </div>
+            </div>
+
+            <!-- Folha Formal da Carta de Solicitação -->
+            <div class="page-card formal-doc-wrapper">
+              <div class="report-sheet formal-letter-sheet" id="pbcLetterPreviewContainer"></div>
+            </div>
+          </div>
+
+          <!-- SUB-ABA 2: PAPEL DE TRABALHO COMPLETO, ATA, 5W2H & MATRIZ RCM -->
+          <div id="reportPaneWp" class="report-pane">
+            <div class="page-card">
+              <div class="report-toolbar no-print">
+                <button class="btn-solid" id="btnGenerateAiSummary">Redigir Narrativa TOD, Ata e 5W2H com IA</button>
+                <span class="toolbar-divider"></span>
+                <button class="btn-solid-navy" id="btnExportWpDocx">Baixar Papel de Trabalho em Word (.docx)</button>
+                <button class="btn-solid-emerald" id="btnExportXlsx">Baixar Pacote Completo Excel (.xlsx)</button>
+                <button class="btn-ghost" id="btnExportCsvRcm">Baixar RCM (.csv)</button>
+                <button class="btn-ghost" id="btnExportMarkdown">Baixar Markdown (.md)</button>
+                <button class="btn-ghost" id="btnPbcEmail">Texto Simples E-mail</button>
+                <button class="btn-ghost" id="btnPrintReport">Imprimir / PDF</button>
+              </div>
+              <label class="inline-check no-print"><input type="checkbox" id="chkIncludeTranscript" checked /> Incluir transcrição literal rastreável como anexo nas exportações</label>
+              <div class="report-sheet formal-letter-sheet" id="reportPreviewContainer"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- VIEW: PROJETOS DE AUDITORIA & HISTÓRICO DE REUNIÕES               -->
+      <!-- ================================================================= -->
+      <section class="view-container" id="view-sessions">
+        <div class="page-scroll">
+          <div class="page-card" style="margin-bottom: 14px;">
+            <div class="card-header-flex" style="margin-bottom: 10px;">
+              <div>
+                <h2 class="section-heading">Projetos de Auditoria &amp; Histórico Completo de Reuniões</h2>
+                <p class="section-desc">Todos os projetos, transcrições, insights, matrizes RCM e cartas PBC são salvos automaticamente no disco deste computador (pasta <code>projetos_auditoria/</code>). Volte em qualquer auditoria a qualquer momento para consultar o que foi falado ou continuar o trabalho.</p>
+              </div>
+            </div>
+
+            <div class="projects-toolbar">
+              <button class="btn-solid" id="btnNewProject">+ Novo Projeto / Nova Auditoria</button>
+              <button class="btn-solid-navy" id="btnNewSession">+ Nova Reunião no Projeto Atual</button>
+              <div class="projects-search-wrap">
+                <input type="text" id="projectHistorySearch" placeholder="Pesquisar em todos os projetos ou buscar qualquer palavra falada nas reuniões..." />
+              </div>
+              <button class="btn-ghost" id="btnExportSessionJson">Backup (.json)</button>
+              <label class="btn-ghost file-btn">
+                Importar (.json)
+                <input type="file" id="importSessionInput" accept=".json" hidden />
+              </label>
+            </div>
+          </div>
+
+          <div class="projects-hub-grid">
+            <!-- COLUNA ESQUERDA: LISTA DE PROJETOS / AUDITORIAS -->
+            <div class="page-card projects-list-panel">
+              <div class="card-header-flex" style="margin-bottom: 10px;">
+                <h3 class="section-heading">Meus Projetos / Auditorias</h3>
+              </div>
+              <div class="projects-cards-list" id="projectsListContainer"></div>
+            </div>
+
+            <!-- COLUNA DIREITA: DETALHES DO PROJETO & REUNIÕES / HISTÓRICO FALADO -->
+            <div class="page-card project-detail-panel">
+              <div id="projectDetailHeader"></div>
+              <div class="matrix-list" id="sessionsList"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIGURAÇÕES -->
+  <div class="modal-backdrop hidden" id="settingsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h3>Configurações de Inteligência Artificial e Escuta</h3>
+          <p class="modal-subtitle">As chaves ficam guardadas só neste computador (%APPDATA%\AuditPrompter\config.json), fora do navegador e do OneDrive.</p>
+        </div>
+        <button class="btn-close" data-close-modal="settingsModal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="aiProviderSelect">Provedor de Análise</label>
+            <select id="aiProviderSelect">
+              <option value="claude">Anthropic Claude (transcrição com Gemini, se configurado)</option>
+              <option value="gemini">Google Gemini (transcrição e análise)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="sysChunkIntervalSelect">Transcrição do áudio da reunião</label>
+            <select id="sysChunkIntervalSelect">
+              <option value="8">Blocos de 8 segundos (mais rápido)</option>
+              <option value="12">Blocos de 12 segundos (padrão)</option>
+              <option value="20">Blocos de 20 segundos (mais econômico)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="autoAnalyzeSelect">Geração automática de insights</label>
+            <select id="autoAnalyzeSelect">
+              <option value="on">Automática (após pausa na fala)</option>
+              <option value="off">Apenas manual (botão / Ctrl+Alt+A)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="minAnalyzeGapSelect">Intervalo mínimo entre análises automáticas</label>
+            <select id="minAnalyzeGapSelect">
+              <option value="8">8 segundos</option>
+              <option value="15">15 segundos (padrão)</option>
+              <option value="30">30 segundos</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="provider-config-box">
+          <div class="provider-box-title">Anthropic Claude <span class="key-status" id="claudeKeyStatus"></span></div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="claudeApiKeyInput">API Key (deixe em branco para manter a atual)</label>
+              <div class="input-with-btn">
+                <input type="password" id="claudeApiKeyInput" placeholder="sk-ant-api03-..." autocomplete="new-password" spellcheck="false" data-lpignore="true" />
+                <button class="btn-ghost-sm" id="btnRemoveClaudeKey" type="button">Remover</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="liveModelSelect">Modelo ao vivo (insights)</label>
+              <select id="liveModelSelect">
+                <option value="claude-opus-5-5">Claude Opus 5.5 (recomendado)</option>
+                <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (mais rápido)</option>
+                <option value="claude-haiku-5-5">Claude Haiku 5.5 (mais rápido e barato)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="liveEffortSelect">Profundidade ao vivo</label>
+              <select id="liveEffortSelect">
+                <option value="low">Baixa — resposta rápida (recomendado durante a call)</option>
+                <option value="medium">Média</option>
+                <option value="high">Alta — mais lenta</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="reportModelSelect">Modelo do relatório / ata</label>
+              <select id="reportModelSelect">
+                <option value="claude-opus-5-5">Claude Opus 5.5 (recomendado)</option>
+                <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
+                <option value="claude-haiku-5-5">Claude Haiku 5.5</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="provider-config-box">
+          <div class="provider-box-title">Google Gemini <span class="key-status" id="geminiKeyStatus"></span></div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="geminiApiKeyInput">API Key (deixe em branco para manter a atual)</label>
+              <div class="input-with-btn">
+                <input type="password" id="geminiApiKeyInput" placeholder="AIzaSy..." autocomplete="new-password" spellcheck="false" data-lpignore="true" />
+                <button class="btn-ghost-sm" id="btnRemoveGeminiKey" type="button">Remover</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="geminiModelSelect">Modelo</label>
+              <select id="geminiModelSelect">
+                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+              </select>
+            </div>
+          </div>
+          <p class="hint-text">O Gemini é usado para transcrever o áudio da reunião (fala do auditado). Sem ele, só o seu microfone é transcrito.</p>
+        </div>
+
+        <div class="form-group">
+          <label for="auditorPersonaInput">Diretrizes Extras de Auditoria (Opcional)</label>
+          <textarea id="auditorPersonaInput" rows="2" placeholder="Ex: Exigir código de transação SAP (T-Code), validar parâmetros de extração de relatórios (IPE), focar em Segregação de Funções..."></textarea>
+        </div>
+        <div class="test-result" id="settingsTestResult"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-ghost" id="btnTestClaudeKey">Testar Anthropic</button>
+        <button class="btn-ghost" id="btnTestApiKey">Testar Gemini</button>
+        <button class="btn-solid" id="btnSaveSettings">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CONSENTIMENTO / LGPD -->
+  <div class="modal-backdrop hidden" id="consentModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h3>Antes de iniciar a captura</h3>
+          <p class="modal-subtitle">Transparência e LGPD — o registro fica no papel de trabalho desta sessão.</p>
+        </div>
+        <button class="btn-close" data-close-modal="consentModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="inline-check strong">
+          <input type="checkbox" id="consentInformedChk" />
+          Informei aos participantes que a reunião terá transcrição e apoio de inteligência artificial.
+        </label>
+        <div class="form-group" style="margin-top: 12px;">
+          <label>Modo de captura</label>
+          <label class="radio-row"><input type="radio" name="captureMode" value="full" checked />
+            <span><strong>Completo</strong> — áudio da reunião transcrito pelo Google Gemini; seu microfone pelo reconhecimento de voz do navegador (Google); análise pelo provedor de IA configurado.</span></label>
+          <label class="radio-row"><input type="radio" name="captureMode" value="mic_only" />
+            <span><strong>Só meu microfone</strong> — o áudio da reunião não é enviado a nenhum serviço; apenas a sua fala é transcrita pelo navegador.</span></label>
+          <label class="radio-row"><input type="radio" name="captureMode" value="text_only" />
+            <span><strong>Sem áudio</strong> — nada é gravado ou enviado; você registra os pontos manualmente e só o texto vai para a análise da IA.</span></label>
+        </div>
+        <p class="hint-text">Use fone de ouvido: sem ele, o microfone também capta a voz do auditado e a fala pode aparecer duplicada.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" data-close-modal="consentModal">Cancelar</button>
+        <button class="btn-solid" id="btnConfirmConsent">Confirmar e continuar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ATALHOS -->
+  <div class="modal-backdrop hidden" id="shortcutsModal">
+    <div class="modal-card narrow">
+      <div class="modal-header">
+        <div><h3>Atalhos de Teclado</h3><p class="modal-subtitle">Funcionam na janela principal e na janela flutuante.</p></div>
+        <button class="btn-close" data-close-modal="shortcutsModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <table class="shortcut-table">
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd> ou <kbd>Alt</kbd>+<kbd>Espaço</kbd></td><td>Gerar insight agora</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>J</kbd></td><td>Próxima pergunta pendente</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>K</kbd></td><td>Pergunta pendente anterior</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></td><td>Marcar pergunta em foco como feita</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd></td><td>Incluir evidência da pergunta em foco no PBC</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd></td><td>Marcar momento (ponto de evidência)</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>N</kbd></td><td>Ir para o campo de anotação</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd></td><td>Abrir janela flutuante</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL GENÉRICO (formulários, confirmações e avisos) -->
+  <div class="modal-backdrop hidden" id="formModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div><h3 id="formModalTitle"></h3><p class="modal-subtitle" id="formModalSubtitle"></p></div>
+        <button class="btn-close" id="formModalClose">✕</button>
+      </div>
+      <div class="modal-body" id="formModalBody"></div>
+      <div class="modal-footer">
+        <button class="btn-ghost" id="formModalCancel">Cancelar</button>
+        <button class="btn-solid" id="formModalSubmit">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="templates.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# Dependências Node.js
+node_modules/
+
+# Dados locais de auditoria e sessões gravadas (não versionar dados de reuniões)
+projetos_auditoria/
+
+# Backups locais e arquivos temporários
+_backup_v1/
+*.tmp
+*.log
+__pycache__/
+*.pyc
+
+# Variáveis de ambiente e configurações locais
+.env
+.env.*
+config.json

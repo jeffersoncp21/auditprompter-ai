@@ -1,0 +1,13 @@
+{
+  "name": "auditprompter-ai",
+  "version": "1.0.0",
+  "description": "Teleprompter e Copiloto de IA ao Vivo para Mapeamento de Processos, Walkthroughs e Auditoria Interna (COSO, SOX, IIA, ISO)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js --open",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0"
+  }
+}
