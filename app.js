@@ -781,6 +781,7 @@ async function migrateLegacyKeys() {
 
 function analysisProvider() {
   if (!serverStatus.online) return 'local';
+  if (settings.provider === 'local') return 'local';
   if (settings.provider === 'gemini') return serverStatus.gemini ? 'gemini' : serverStatus.claude ? 'claude' : 'local';
   return serverStatus.claude ? 'claude' : serverStatus.gemini ? 'gemini' : 'local';
 }
@@ -5178,8 +5179,14 @@ function bindEvents() {
     if (e.key !== 'Escape') return;
     if (!$('formModal').classList.contains('hidden')) formResolver && formResolver(false);
     else if (!$('consentModal').classList.contains('hidden')) cancelConsent();
-    else ['settingsModal', 'shortcutsModal'].forEach((id) => $(id).classList.add('hidden'));
+    else ['settingsModal', 'shortcutsModal', 'copilotBridgeModal'].forEach((id) => $(id) && $(id).classList.add('hidden'));
   });
+
+  if ($('btnFreeCopilotBridge')) $('btnFreeCopilotBridge').addEventListener('click', openCopilotBridgeModal);
+  if ($('btnBridgeCopyClaudePrompt')) $('btnBridgeCopyClaudePrompt').addEventListener('click', copyFreeClaudePrompt);
+  if ($('btnBridgeCopyAntigravityCmd')) $('btnBridgeCopyAntigravityCmd').addEventListener('click', copyAntigravityCommand);
+  if ($('btnBridgeApplyJson')) $('btnBridgeApplyJson').addEventListener('click', applyPastedCopilotJson);
+  if ($('btnBridgeSyncFromDisk')) $('btnBridgeSyncFromDisk').addEventListener('click', syncActiveSessionFromDisk);
 
   $('btnOpenPiP').addEventListener('click', openFloatingTeleprompter);
 
@@ -5199,6 +5206,129 @@ function bindEvents() {
   rt.statusTicker = setInterval(() => {
     if (rt.analyzeTimer) updateCycleStatus();
   }, 1000);
+}
+
+// ============================================================================
+// PONTE GRATUITA CLAUDE.AI / ANTIGRAVITY (SEM API EXTERNA PAGA)
+// ============================================================================
+function openCopilotBridgeModal() {
+  persistNow();
+  if ($('bridgeSessionIdLabel')) $('bridgeSessionIdLabel').textContent = S.id || 'atual';
+  if ($('bridgePasteJsonInput')) $('bridgePasteJsonInput').value = '';
+  if ($('copilotBridgeModal')) $('copilotBridgeModal').classList.remove('hidden');
+}
+
+function buildFreeClaudeFullPrompt() {
+  const recentEntries = S.transcript.slice(-25);
+  return [
+    LIVE_SYSTEM_PROMPT,
+    '',
+    buildSessionContextBlock(),
+    '',
+    buildLivePrompt(recentEntries, 'Analise as falas recentes da reunião e gere insights pareados (assunto falado + pergunta de auditoria + evidência IPE), riscos, controles e pontos em aberto.'),
+    '',
+    'IMPORTANTE: Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto antes ou depois) seguindo exatamente esta estrutura:',
+    JSON.stringify(
+      {
+        direcionamento: 'Frase curta orientando o foco do auditor agora',
+        blocos: [
+          {
+            priority: 'critica',
+            category: 'Alçada / SoD / IPE / Sistema',
+            topicTitle: 'Título executivo curto do assunto falado',
+            topicSummary: 'Resumo estruturado do que o auditado acabou de explicar',
+            riskAlert: 'Alerta de gap/risco identificado (ou string vazia)',
+            text: 'Pergunta direta para o auditor fazer agora na reunião',
+            rationale: 'Objetivo do teste (COSO/SOX/TOD)',
+            screenTitle: 'Evidência ou tela a pedir agora',
+            screenScript: 'Como pedir para o auditado mostrar na tela',
+            ipeTip: 'Critério de IPE (parâmetros, fonte, carimbo de tempo, completude)',
+            sourceIds: ['T1']
+          }
+        ],
+        riscos: [
+          {
+            severity: 'Alto',
+            title: 'Título do risco inerente ou residual',
+            description: 'Causa, evento e impacto no processo',
+            recommendation: 'Recomendação de melhoria do controle',
+            sourceIds: ['T1']
+          }
+        ],
+        controles: [
+          {
+            name: 'Nome do controle identificado',
+            type: 'Preventivo',
+            nature: 'Automático',
+            frequency: 'Por transação',
+            owner: 'Cargo/Área responsável',
+            status: 'Com gap / fragilidade',
+            mitigaRiscos: ['R-01'],
+            sourceIds: ['T1']
+          }
+        ],
+        checklistCobertos: ['chk-1'],
+        pontosEmAberto: [{ text: 'Ponto pendente de confirmação', kind: 'confirmar', sourceIds: ['T1'] }],
+        divergencias: []
+      },
+      null,
+      2
+    )
+  ].join('\n');
+}
+
+async function copyFreeClaudePrompt() {
+  const promptText = buildFreeClaudeFullPrompt();
+  try {
+    await navigator.clipboard.writeText(promptText);
+    showToast('Prompt copiado! Cole no Claude.ai gratuito e traga o JSON gerado.');
+  } catch (_) {
+    showToast('Não foi possível copiar automaticamente.');
+  }
+}
+
+async function copyAntigravityCommand() {
+  persistNow();
+  const cmd = `Leia a sessão ativa em projetos_auditoria/sessoes/${S.id}.json, analise as últimas falas da transcrição segundo COSO/SOX/IIA/IPE e atualize o arquivo JSON da sessão adicionando novos insights em questions, risks, controls e pbcList.`;
+  try {
+    await navigator.clipboard.writeText(cmd);
+    showToast('Comando copiado! Cole no chat do Antigravity na IDE.');
+  } catch (_) {
+    showToast('Não foi possível copiar o comando.');
+  }
+}
+
+function applyPastedCopilotJson() {
+  const raw = ($('bridgePasteJsonInput') ? $('bridgePasteJsonInput').value : '').trim();
+  if (!raw) {
+    showToast('Cole a resposta JSON gerada pelo Claude.ai ou Antigravity primeiro.');
+    return;
+  }
+  const parsed = extractJson(raw);
+  if (!parsed || typeof parsed !== 'object') {
+    showToast('JSON inválido. Certifique-se de copiar o bloco JSON completo.');
+    return;
+  }
+  applyAiInsights(parsed);
+  S.analyzedUpTo = S.transcript.length;
+  commit();
+  if ($('copilotBridgeModal')) $('copilotBridgeModal').classList.add('hidden');
+  showToast('✓ Insights do Claude / Antigravity aplicados no Teleprompter!');
+}
+
+async function syncActiveSessionFromDisk() {
+  try {
+    const res = await api(`/api/projects/session?id=${encodeURIComponent(S.id)}`);
+    if (res && res.session) {
+      S = normalizeState(res.session);
+      fillScopeForm();
+      renderAll();
+      if ($('copilotBridgeModal')) $('copilotBridgeModal').classList.add('hidden');
+      showToast('✓ Sessão sincronizada com as atualizações do Antigravity no disco!');
+    }
+  } catch (err) {
+    showToast(`Não foi possível sincronizar do disco: ${err.message}`);
+  }
 }
 
 // ============================================================================

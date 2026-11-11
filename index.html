@@ -151,6 +151,7 @@
             <button class="btn-solid-sm" id="btnSendManualNote">Mapear</button>
             <button class="btn-inline" id="btnMarkMoment" title="Marcar momento importante como ponto de evidência (Ctrl+Alt+M)">★ Momento</button>
             <button class="btn-inline" id="btnSimulateSpeech" title="Simular uma fala de auditado para demonstração">Simular</button>
+            <button class="btn-inline" id="btnFreeCopilotBridge" title="Usar com Claude.ai Gratuito ou Antigravity na IDE sem precisar de API paga" style="border-color:#c7d2fe;background:#eef2ff;color:#1e40af;font-weight:700;">⚡ Claude / Antigravity (Sem API)</button>
           </div>
         </div>
 
@@ -527,8 +528,9 @@
           <div class="form-group">
             <label for="aiProviderSelect">Provedor de Análise</label>
             <select id="aiProviderSelect">
-              <option value="claude">Anthropic Claude (transcrição com Gemini, se configurado)</option>
-              <option value="gemini">Google Gemini (transcrição e análise)</option>
+              <option value="local">Motor Local + Ponte Claude.ai / Antigravity (100% Gratuito — Sem API Paga)</option>
+              <option value="claude">Anthropic Claude (via API Key)</option>
+              <option value="gemini">Google Gemini (via API Key — aceita chave gratuita do Google AI Studio)</option>
             </select>
           </div>
           <div class="form-group">
@@ -617,7 +619,7 @@
               </select>
             </div>
           </div>
-          <p class="hint-text">O Gemini é usado para transcrever o áudio da reunião (fala do auditado). Sem ele, só o seu microfone é transcrito.</p>
+          <p class="hint-text">A transcrição do áudio da reunião já funciona gratuitamente via motor local (Python SpeechRecognition + FFmpeg). Opcionalmente, você pode usar uma chave gratuita do Google AI Studio (aistudio.google.com).</p>
         </div>
 
         <div class="form-group">
@@ -701,6 +703,51 @@
       <div class="modal-footer">
         <button class="btn-ghost" id="formModalCancel">Cancelar</button>
         <button class="btn-solid" id="formModalSubmit">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PONTE GRATUITA CLAUDE.AI / ANTIGRAVITY (SEM API PAGA) -->
+  <div class="modal-backdrop hidden" id="copilotBridgeModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h3>⚡ Copiloto Sem API Paga (Claude.ai Gratuito ou Antigravity)</h3>
+          <p class="modal-subtitle">Use o Claude.ai gratuito no navegador ou o agente Antigravity na IDE para analisar a reunião sem pagar API.</p>
+        </div>
+        <button class="btn-close" data-close-modal="copilotBridgeModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="provider-config-box" style="margin-bottom: 12px;">
+          <div class="provider-box-title">Opção A — Usando com o Antigravity (Direto na IDE)</div>
+          <p class="hint-text" style="margin-bottom: 8px;">
+            Todas as falas desta reunião estão salvas em tempo real em <code>projetos_auditoria/sessoes/<span id="bridgeSessionIdLabel"></span>.json</code>.
+            Peça no chat do Antigravity: <strong>"Analise a reunião atual em projetos_auditoria e injete novos insights COSO/SOX/IPE"</strong> e depois clique abaixo:
+          </p>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn-solid-sm" id="btnBridgeSyncFromDisk" type="button">🔄 Sincronizar Insights do Antigravity (Disco)</button>
+            <button class="btn-ghost-sm" id="btnBridgeCopyAntigravityCmd" type="button">📋 Copiar Comando para o Chat do Antigravity</button>
+          </div>
+        </div>
+
+        <div class="provider-config-box">
+          <div class="provider-box-title">Opção B — Usando com o Claude.ai Gratuito (Web / Desktop)</div>
+          <p class="hint-text" style="margin-bottom: 8px;">
+            <strong>Passo 1:</strong> Copie o prompt pronto com as falas da reunião e cole no <a href="https://claude.ai" target="_blank" rel="noopener">claude.ai</a> gratuito.<br/>
+            <strong>Passo 2:</strong> Copie a resposta JSON gerada pelo Claude, cole no campo abaixo e clique em <strong>Aplicar Insights na Tela</strong>.
+          </p>
+          <div style="display:flex; gap:8px; margin-bottom: 10px; flex-wrap:wrap;">
+            <button class="btn-solid-sm" id="btnBridgeCopyClaudePrompt" type="button">📋 1. Copiar Prompt Completo p/ Claude.ai</button>
+          </div>
+          <div class="form-group">
+            <label for="bridgePasteJsonInput">2. Cole aqui a resposta JSON do Claude.ai (ou do Antigravity):</label>
+            <textarea id="bridgePasteJsonInput" rows="5" placeholder='Cole aqui o bloco JSON retornado pelo Claude (mesmo com ```json ... ```)...'></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" data-close-modal="copilotBridgeModal">Fechar</button>
+        <button class="btn-solid" id="btnBridgeApplyJson" type="button">📥 Aplicar Insights na Tela</button>
       </div>
     </div>
   </div>

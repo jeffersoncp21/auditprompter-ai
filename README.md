@@ -52,13 +52,20 @@ npm start
 
 ---
 
-## Configuração de Inteligência Artificial (Opcional)
+## Configuração de Inteligência Artificial (100% Gratuito ou com API)
 
-O **AuditPrompter** já conta com um **Motor Especialista Local Gratuito** integrado (baseado em regras COSO/SOX/IIA), funcionando mesmo sem chave de API.
+> 📘 **[Leia o Manual Completo: Como usar com Claude.ai ou Antigravity SEM API Paga (`MANUAL_SEM_API_PAGA.md`)](./MANUAL_SEM_API_PAGA.md)**
 
-Para habilitar análises avançadas com LLMs em tempo real:
+O **AuditPrompter** funciona **sem nenhuma API externa paga**:
+- **Transcrição Ao Vivo Gratuita:** O áudio da reunião e o microfone são transcritos localmente (`Python SpeechRecognition + FFmpeg` e navegador) sem custo.
+- **Ponte `⚡ Claude / Antigravity (Sem API)` na tela principal:**
+  1. **Com o Antigravity (na IDE):** O Antigravity lê e atualiza diretamente a sessão ativa em `projetos_auditoria/sessoes/<id>.json` e você sincroniza com 1 clique no botão **`🔄 Sincronizar Insights do Antigravity (Disco)`**.
+  2. **Com o Claude.ai Gratuito (Web):** Clique em **`📋 Copiar Prompt Completo p/ Claude.ai`**, cole no [claude.ai](https://claude.ai) gratuito e cole o JSON gerado de volta em **`📥 Aplicar Insights na Tela`**.
+  3. **Motor Especialista Local Integrado:** Gera automaticamente perguntas TOD/IPE, riscos e controles para falas sobre aprovações fora do sistema, conflitos de SoD, planilhas manuais (IPE) e acessos compartilhados (ITGC).
+
+Para habilitar chamadas diretas via chave de API (opcional):
 1. No menu lateral esquerdo, clique em **Motor de IA & API**.
-2. Insira sua chave da **Anthropic (Claude Sonnet / Opus)** ou do **Google Gemini**.
+2. Insira sua chave da **Anthropic** ou uma chave gratuita do **Google AI Studio (Gemini)**.
 3. As chaves ficam salvas **exclusivamente no seu computador** (em `%APPDATA%\AuditPrompter\config.json`) e nunca são expostas no navegador ou no repositório Git.
 
 ---
@@ -70,3 +77,4 @@ Para habilitar análises avançadas com LLMs em tempo real:
 - `templates.js` — Biblioteca de templates de processos (Compras/P2P, Financeiro, TI/Acessos, RH/Folha, etc.) com perguntas roteirizadas, riscos e controles padrão.
 - `export_builder.py` — Gerador de relatórios corporativos em `.docx` (`python-docx`) e `.xlsx` (`openpyxl`).
 - `index.html` & `styles.css` — Interface limpa com menu lateral e visão pareada de teleprompter.
+
