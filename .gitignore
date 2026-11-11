@@ -15,3 +15,6 @@ __pycache__/
 .env
 .env.*
 config.json
+
+# Cópia de trabalho local da v2 (o conteúdo já está na raiz)
+AuditPrompter_v2/

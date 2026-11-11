@@ -125,6 +125,7 @@
             <span id="analyzeBtnIcon">Gerar Insight Agora</span>
           </button>
           <span class="cycle-readout" id="cycleStatusText">Standby</span>
+          <button class="btn-inline btn-close-meeting" id="btnCloseMeeting" title="Revisar o que ficou pendente antes de liberar os participantes (Ctrl+Alt+E)">Encerrar reunião</button>
         </div>
       </header>
 
@@ -149,10 +150,24 @@
             </select>
             <input type="text" id="manualTranscriptInput" placeholder="Resumo rápido ou fala do auditado (Enter p/ mapear) — Ctrl+Alt+N" />
             <button class="btn-solid-sm" id="btnSendManualNote">Mapear</button>
-            <button class="btn-inline" id="btnMarkMoment" title="Marcar momento importante como ponto de evidência (Ctrl+Alt+M)">★ Momento</button>
+            <button class="btn-inline" id="btnMarkMoment" title="Marcar momento importante como ponto de evidência; se a tela da reunião estiver compartilhada, salva também um print (Ctrl+Alt+M)">★ Momento</button>
+            <button class="btn-inline" id="btnScreenShot" title="Salvar um print da tela compartilhada como evidência do walkthrough (Ctrl+Alt+S)">📸 Print</button>
             <button class="btn-inline" id="btnSimulateSpeech" title="Simular uma fala de auditado para demonstração">Simular</button>
             <button class="btn-inline" id="btnFreeCopilotBridge" title="Usar com Claude.ai Gratuito ou Antigravity na IDE sem precisar de API paga" style="border-color:#c7d2fe;background:#eef2ff;color:#1e40af;font-weight:700;">⚡ Claude / Antigravity (Sem API)</button>
           </div>
+        </div>
+
+        <!-- Quem está falando no áudio da reunião (aparece quando há entrevistados cadastrados em Preparação) -->
+        <div class="speaker-bar hidden" id="speakerBar">
+          <span class="speaker-bar-label">QUEM ESTÁ FALANDO</span>
+          <div class="speaker-bar-chips" id="speakerBarChips"></div>
+          <span class="hint-text">O áudio da reunião é atribuído a quem estiver selecionado. Corrija depois em Transcrição, se precisar.</span>
+        </div>
+
+        <!-- Prévia do insight enquanto a IA ainda está escrevendo -->
+        <div class="live-insight-preview hidden" id="liveInsightPreview">
+          <span class="preview-tag">INSIGHT CHEGANDO…</span>
+          <span class="preview-text" id="liveInsightPreviewText"></span>
         </div>
 
         <div class="board-toolbar">
@@ -198,8 +213,14 @@
               </div>
               <div class="toolbar-row">
                 <input type="search" id="transcriptSearch" placeholder="Buscar na transcrição..." />
+                <label class="btn-inline file-btn" title="Transcrição pronta do Teams/Zoom/Meet (.vtt, .docx, .srt, .txt) ou gravação de áudio/vídeo (transcrita pelo Whisper local, sem sair do computador)">
+                  Importar transcrição / gravação
+                  <input type="file" id="importTranscriptInput" accept=".vtt,.srt,.txt,.docx,.md,audio/*,video/*,.mp3,.m4a,.wav,.ogg,.opus,.webm,.mp4,.mkv,.mov,.aac,.flac" hidden />
+                </label>
+                <button class="btn-inline hidden" id="btnAnalyzeBacklog">Analisar falas pendentes</button>
                 <button class="btn-inline" id="btnClearTranscript">Limpar transcrição</button>
               </div>
+              <div class="import-progress hidden" id="importProgress"></div>
               <div class="transcript-feed" id="transcriptFeed"></div>
             </div>
 
@@ -207,7 +228,7 @@
               <div class="card-header-flex">
                 <div>
                   <h2 class="section-heading">Momentos Marcados (<span id="momentsCountBadge">0</span>)</h2>
-                  <p class="section-desc">Pontos de evidência marcados durante a reunião (Ctrl+Alt+M). Entram no papel de trabalho.</p>
+                  <p class="section-desc">Pontos de evidência marcados durante a reunião (Ctrl+Alt+M). Com a tela da reunião compartilhada, cada momento guarda um print com data e hora. Entram no papel de trabalho.</p>
                 </div>
               </div>
               <div class="matrix-list" id="momentsList"></div>
@@ -474,7 +495,7 @@
             <div class="card-header-flex" style="margin-bottom: 10px;">
               <div>
                 <h2 class="section-heading">Projetos de Auditoria &amp; Histórico Completo de Reuniões</h2>
-                <p class="section-desc">Todos os projetos, transcrições, insights, matrizes RCM e cartas PBC são salvos automaticamente no disco deste computador (pasta <code>projetos_auditoria/</code>). Volte em qualquer auditoria a qualquer momento para consultar o que foi falado ou continuar o trabalho.</p>
+                <p class="section-desc">Todos os projetos, transcrições, insights, matrizes RCM, cartas PBC e prints de evidência são salvos automaticamente no disco deste computador, fora da pasta do programa e do OneDrive (o caminho aparece em Configurações de IA). Volte em qualquer auditoria a qualquer momento para consultar o que foi falado ou continuar o trabalho.</p>
               </div>
             </div>
 
@@ -534,14 +555,36 @@
             </select>
           </div>
           <div class="form-group">
-            <label for="sysChunkIntervalSelect">Transcrição do áudio da reunião</label>
+            <label for="sysChunkIntervalSelect">Tamanho máximo do bloco de áudio</label>
             <select id="sysChunkIntervalSelect">
-              <option value="8">Blocos de 8 segundos (mais rápido)</option>
-              <option value="12">Blocos de 12 segundos (padrão)</option>
-              <option value="20">Blocos de 20 segundos (mais econômico)</option>
+              <option value="8">Até 8 segundos (mais rápido)</option>
+              <option value="12">Até 12 segundos (padrão)</option>
+              <option value="20">Até 20 segundos (falas longas sem pausa)</option>
             </select>
           </div>
         </div>
+        <p class="hint-text">O áudio é cortado nas pausas da fala; o tamanho máximo só vale quando alguém fala sem parar.</p>
+
+        <div class="provider-config-box">
+          <div class="provider-box-title">Transcrição do áudio (reunião e microfone)</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="transcribeEngineSelect">Motor de transcrição</label>
+              <select id="transcribeEngineSelect">
+                <option value="whisper">Whisper local — o áudio NÃO sai deste computador (recomendado)</option>
+                <option value="gemini">Google Gemini — nuvem, exige chave (o áudio é enviado ao Google)</option>
+                <option value="google">Reconhecimento gratuito do Google — nuvem (o áudio é enviado ao Google)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="glossaryInput">Glossário (sistemas, siglas, nomes)</label>
+              <input type="text" id="glossaryInput" placeholder="Ex.: SAP, ME21N, TOTVS Protheus, CNAB, Firefighter" />
+            </div>
+          </div>
+          <p class="hint-text" id="transcribeEngineStatus"></p>
+          <p class="hint-text">O glossário ajuda o Whisper a acertar termos técnicos. O motor nunca muda sozinho para a nuvem: se o escolhido não estiver disponível, a transcrição para e um aviso aparece.</p>
+        </div>
+        <p class="hint-text">Dados das auditorias (reuniões e prints) gravados em: <code id="dataDirLabel"></code></p>
 
         <div class="form-row">
           <div class="form-group">
@@ -554,8 +597,9 @@
           <div class="form-group">
             <label for="minAnalyzeGapSelect">Intervalo mínimo entre análises automáticas</label>
             <select id="minAnalyzeGapSelect">
-              <option value="8">8 segundos</option>
-              <option value="15">15 segundos (padrão)</option>
+              <option value="4">4 segundos (mais rápido, mais chamadas à IA)</option>
+              <option value="8">8 segundos (padrão)</option>
+              <option value="15">15 segundos</option>
               <option value="30">30 segundos</option>
             </select>
           </div>
@@ -574,9 +618,9 @@
             <div class="form-group">
               <label for="liveModelSelect">Modelo ao vivo (insights)</label>
               <select id="liveModelSelect">
-                <option value="claude-opus-5-5">Claude Opus 5.5 (recomendado)</option>
-                <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (mais rápido)</option>
-                <option value="claude-haiku-5-5">Claude Haiku 5.5 (mais rápido e barato)</option>
+                <option value="claude-haiku-5-5">Claude Haiku 5.5 — resposta mais rápida (padrão ao vivo)</option>
+                <option value="claude-sonnet-5-5">Claude Sonnet 5.5 — equilíbrio entre rapidez e profundidade</option>
+                <option value="claude-opus-5-5">Claude Opus 5.5 — mais profundo, porém mais lento</option>
               </select>
             </div>
           </div>
@@ -619,7 +663,7 @@
               </select>
             </div>
           </div>
-          <p class="hint-text">A transcrição do áudio da reunião já funciona gratuitamente via motor local (Python SpeechRecognition + FFmpeg). Opcionalmente, você pode usar uma chave gratuita do Google AI Studio (aistudio.google.com).</p>
+          <p class="hint-text">A chave do Gemini serve para a análise (provedor Gemini) e, se você escolher esse motor acima, para a transcrição em nuvem. Aceita a chave gratuita do Google AI Studio (aistudio.google.com).</p>
         </div>
 
         <div class="form-group">
@@ -655,9 +699,9 @@
         <div class="form-group" style="margin-top: 12px;">
           <label>Modo de captura</label>
           <label class="radio-row"><input type="radio" name="captureMode" value="full" checked />
-            <span><strong>Completo</strong> — áudio da reunião transcrito pelo Google Gemini; seu microfone pelo reconhecimento de voz do navegador (Google); análise pelo provedor de IA configurado.</span></label>
+            <span><strong>Completo</strong><span id="consentFullDesc"> — áudio da reunião e microfone transcritos pelo motor configurado; análise pelo provedor de IA configurado.</span></span></label>
           <label class="radio-row"><input type="radio" name="captureMode" value="mic_only" />
-            <span><strong>Só meu microfone</strong> — o áudio da reunião não é enviado a nenhum serviço; apenas a sua fala é transcrita pelo navegador.</span></label>
+            <span><strong>Só meu microfone</strong><span id="consentMicDesc"> — o áudio da reunião não é capturado; apenas a sua fala é transcrita.</span></span></label>
           <label class="radio-row"><input type="radio" name="captureMode" value="text_only" />
             <span><strong>Sem áudio</strong> — nada é gravado ou enviado; você registra os pontos manualmente e só o texto vai para a análise da IA.</span></label>
         </div>
@@ -685,6 +729,9 @@
           <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></td><td>Marcar pergunta em foco como feita</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd></td><td>Incluir evidência da pergunta em foco no PBC</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd></td><td>Marcar momento (ponto de evidência)</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td>Print da tela compartilhada (evidência)</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>9</kbd></td><td>Definir quem está falando no áudio da reunião</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>E</kbd></td><td>Revisão de encerramento da reunião</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>N</kbd></td><td>Ir para o campo de anotação</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd></td><td>Abrir janela flutuante</td></tr>
         </table>
@@ -721,8 +768,8 @@
         <div class="provider-config-box" style="margin-bottom: 12px;">
           <div class="provider-box-title">Opção A — Usando com o Antigravity (Direto na IDE)</div>
           <p class="hint-text" style="margin-bottom: 8px;">
-            Todas as falas desta reunião estão salvas em tempo real em <code>projetos_auditoria/sessoes/<span id="bridgeSessionIdLabel"></span>.json</code>.
-            Peça no chat do Antigravity: <strong>"Analise a reunião atual em projetos_auditoria e injete novos insights COSO/SOX/IPE"</strong> e depois clique abaixo:
+            Todas as falas desta reunião estão salvas em tempo real em <code><span id="bridgeDataDirLabel"></span> › sessoes › <span id="bridgeSessionIdLabel"></span>.json</code> (fora da pasta do programa e do OneDrive).
+            Copie o comando abaixo para o chat do Antigravity — ele já leva o caminho completo do arquivo. Quando o agente terminar, clique em Sincronizar: os itens novos são <strong>mesclados</strong> à tela, sem apagar nada do que você fez.
           </p>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <button class="btn-solid-sm" id="btnBridgeSyncFromDisk" type="button">🔄 Sincronizar Insights do Antigravity (Disco)</button>
@@ -756,5 +803,6 @@
 
   <script src="templates.js"></script>
   <script src="app.js"></script>
+  <script src="extras.js"></script>
 </body>
 </html>

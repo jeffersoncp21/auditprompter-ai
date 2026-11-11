@@ -18,9 +18,9 @@ if not exist "%~dp0node_modules\@anthropic-ai\sdk" (
 
 where python >nul 2>nul
 if %errorlevel% equ 0 (
-  python -c "import docx, openpyxl, speech_recognition" >nul 2>nul
+  python -c "import docx, openpyxl, speech_recognition, faster_whisper" >nul 2>nul
   if errorlevel 1 (
-    echo [2/2] Instalando bibliotecas Python para exportacao Word/Excel e transcricao...
+    echo [2/2] Instalando bibliotecas Python - exportacao Word/Excel e transcricao local Whisper - aguarde...
     python -m pip install -r "%~dp0requirements.txt" --quiet
   )
 )

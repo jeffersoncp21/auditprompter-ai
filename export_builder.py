@@ -3,6 +3,7 @@
 AuditPrompter — Gerador Corporativo de Documentos de Auditoria Interna (.docx e .xlsx)
 Alinhado às Normas Globais de Auditoria Interna (IIA), COSO ICIF, SOX / PCAOB (IPE) e Metodologia de Walkthrough (TOD).
 """
+import os
 import sys
 import json
 from datetime import datetime
@@ -530,7 +531,47 @@ def build_working_paper_docx(data, out_path):
             set_cell_margins(row.cells[i], top=60, bottom=60, left=75, right=75)
             row.cells[i].paragraphs[0].add_run(str(v)).font.size = Pt(8.0)
 
-    # 6. Anexo Opcional: Transcrição
+    # 6. Momentos marcados e prints da tela compartilhada (evidência do walkthrough)
+    moments = data.get("moments", [])
+    if moments:
+        add_section_heading(doc, f"6. Momentos Marcados e Evidências de Tela ({len(moments)})")
+        for m in moments:
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(6)
+            p.paragraph_format.space_after = Pt(2)
+            r_t = p.add_run(f"★ {m.get('time', '')}")
+            r_t.bold = True
+            r_t.font.size = Pt(9.5)
+            ids = ", ".join(m.get("transcriptIds") or [])
+            if ids:
+                r_i = p.add_run(f"   Fonte: {ids}")
+                r_i.font.size = Pt(8.0)
+            if m.get("note"):
+                pn = doc.add_paragraph()
+                pn.paragraph_format.space_after = Pt(2)
+                pn.add_run("Anotação do auditor: ").bold = True
+                pn.add_run(str(m.get("note")))
+                for r in pn.runs:
+                    r.font.size = Pt(9.0)
+            if m.get("excerpt"):
+                pe = doc.add_paragraph()
+                pe.paragraph_format.space_after = Pt(3)
+                r_e = pe.add_run(str(m.get("excerpt")))
+                r_e.italic = True
+                r_e.font.size = Pt(8.2)
+            shot = m.get("shotPath")
+            if shot and os.path.exists(shot):
+                try:
+                    doc.add_picture(shot, width=Cm(17.5))
+                    cap = doc.add_paragraph()
+                    cap.paragraph_format.space_after = Pt(8)
+                    r_c = cap.add_run(f"Print da tela compartilhada às {m.get('time', '')} (capturado pelo AuditPrompter durante a reunião).")
+                    r_c.font.size = Pt(7.8)
+                    r_c.italic = True
+                except Exception:
+                    pass
+
+    # 7. Anexo Opcional: Transcrição
     if data.get("includeTranscript") and data.get("transcript"):
         add_section_heading(doc, "Anexo — Registro Rastreável da Entrevista")
         for t in data.get("transcript", []):

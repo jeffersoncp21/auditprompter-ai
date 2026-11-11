@@ -8,10 +8,12 @@
  *  - Runtime (rt): estado efêmero (streams de áudio, timers, fila de análise, janela flutuante).
  *
  * Fluxo ao vivo:
- *  Microfone  → reconhecimento de voz do navegador → transcrição "Auditor"
- *  Áudio da reunião → blocos de áudio → Gemini (transcrição literal) → transcrição "Auditado"
- *  Nova fala na transcrição → análise agendada (com pausa e intervalo mínimo, uma por vez)
+ *  Microfone e áudio da reunião → blocos cortados nas pausas da fala → transcrição (padrão: Whisper
+ *  local, sem enviar áudio à nuvem) → falas "Auditor" / entrevistado selecionado na barra de locutores
+ *  Nova fala na transcrição → análise agendada (espera curta, uma por vez, resposta em streaming)
  *  → cartões pareados (assunto × pergunta/tela) + RCM + pontos em aberto + divergências.
+ *
+ * As funcionalidades da v2 (importação, prints de evidência, memória do projeto, encerramento) ficam em extras.js.
  */
 
 // ============================================================================
@@ -164,12 +166,17 @@ const SETTINGS_DEFAULTS = {
   liveEffort: 'low',
   reportModel: 'claude-opus-5-5',
   geminiModel: 'gemini-2.5-flash',
-  sysChunkSec: 7,
+  sysChunkSec: 12,
   autoAnalyze: 'on',
-  minAnalyzeGapSec: 10,
+  minAnalyzeGapSec: 8,
   persona: '',
-  fontSize: 1.08
+  fontSize: 1.08,
+  // Motor de transcrição: 'whisper' (100% local), 'gemini' (nuvem, exige chave) ou 'google' (nuvem, gratuito).
+  transcribeEngine: 'whisper',
+  glossary: '',
+  settingsVersion: 2
 };
+const LIVE_MODELS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'];
 
 const settings = loadSettings();
 
@@ -186,9 +193,19 @@ function loadSettings() {
   };
   Object.keys(legacy).forEach((k) => legacy[k] === undefined && delete legacy[k]);
   const merged = Object.assign({}, SETTINGS_DEFAULTS, legacy, stored);
-  if (!['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'].includes(merged.liveModel)) merged.liveModel = 'claude-opus-5-5';
-  if (!['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'].includes(merged.reportModel)) merged.reportModel = 'claude-opus-5-5';
-  if (!['claude', 'gemini'].includes(merged.provider)) merged.provider = 'claude';
+  // Migração única para a v2: o ao vivo passa a usar o modelo mais rápido e pausas menores entre análises.
+  // (O modelo do relatório/ata não muda. O auditor pode voltar ao modelo anterior em Configurações de IA.)
+  if (!stored.settingsVersion || stored.settingsVersion < 2) {
+    merged.liveModel = 'claude-haiku-5-5';
+    merged.liveEffort = 'low';
+    merged.minAnalyzeGapSec = 8;
+    merged.sysChunkSec = 12;
+    merged.settingsVersion = 2;
+  }
+  if (!LIVE_MODELS.includes(merged.liveModel)) merged.liveModel = 'claude-haiku-5-5';
+  if (!LIVE_MODELS.includes(merged.reportModel)) merged.reportModel = 'claude-opus-5-5';
+  if (!['claude', 'gemini', 'local'].includes(merged.provider)) merged.provider = 'claude';
+  if (!['whisper', 'gemini', 'google'].includes(merged.transcribeEngine)) merged.transcribeEngine = 'whisper';
   return merged;
 }
 
@@ -196,7 +213,7 @@ function persistSettings() {
   safeSet('ap_settings', JSON.stringify(settings));
 }
 
-const serverStatus = { online: false, claude: false, gemini: false };
+const serverStatus = { online: false, claude: false, gemini: false, whisper: false, whisperModel: '', dataDir: '', migratedFrom: '' };
 
 // ============================================================================
 // RUNTIME (efêmero)
@@ -208,6 +225,14 @@ const rt = {
   sysSegments: null,
   sysEnergy: false,
   sysCycleTimer: null,
+  sysSegStartAt: 0,
+  sysLastVoiceAt: 0,
+  micSegStartAt: 0,
+  micLastVoiceAt: 0,
+  micCycleTimer: null,
+  segmentTicker: null,
+  livePreview: '',
+  transcribeErrorShownAt: 0,
   micStream: null,
   micAnalyser: null,
   micSegments: null,
@@ -398,12 +423,93 @@ function activeProjectObj() {
   return projectsStore.projects.find((p) => p.id === S.projectId) || null;
 }
 
+// Data de modificação do arquivo de cada sessão vista por último pelo navegador (detecção de edição externa).
+const diskMtimes = {};
+
+// Grava a sessão no disco. Devolve { conflict, session, mtime } quando o arquivo foi alterado por fora.
+async function diskSaveSession(session, { force = false } = {}) {
+  const res = await fetch('/api/projects/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-AuditPrompter': '1' },
+    body: JSON.stringify({ session, knownMtime: typeof diskMtimes[session.id] === 'number' ? diskMtimes[session.id] : null, force })
+  });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (_) {}
+  if (res.status === 409 && data && data.conflict) return data;
+  if (!res.ok) throw new Error((data && data.error && data.error.message) || `HTTP ${res.status}`);
+  if (data && typeof data.mtime === 'number') diskMtimes[session.id] = data.mtime;
+  return data;
+}
+
+// Traz para a sessão aberta o que um agente externo (ex.: Antigravity na IDE) acrescentou no arquivo,
+// sem apagar nada do que está na tela. Devolve quantos itens novos entraram.
+function mergeExternalSession(disk) {
+  if (!disk || typeof disk !== 'object') return 0;
+  const arr = (x) => (Array.isArray(x) ? x : []);
+  const before = S.questions.length + S.risks.length + S.controls.length + S.pbcList.length + S.openPoints.length + S.divergences.length;
+
+  const newQuestions = [];
+  arr(disk.questions).forEach((q) => {
+    if (!q || (q.id && S.questions.some((x) => x.id === q.id))) return;
+    const item = addQuestion(q, ['ia', 'local', 'planejada', 'roteiro'].includes(q.origin) ? q.origin : 'ia');
+    if (!item) return;
+    if (q.screenTitle && q.screenScript) addScreenRequest({ title: q.screenTitle, script: q.screenScript, ipeTip: q.ipeTip });
+    newQuestions.push(item);
+  });
+  S.questions = [...newQuestions, ...S.questions];
+
+  const extRiskToLocal = {};
+  arr(disk.risks).forEach((r) => {
+    if (!r) return;
+    const local = (r.id && S.risks.find((x) => x.id === r.id)) || addRisk({ ...r, source: r.source || 'IA' });
+    if (local && r.id) extRiskToLocal[r.id] = local.id;
+  });
+  arr(disk.controls).forEach((c) => {
+    if (!c || (c.id && S.controls.some((x) => x.id === c.id))) return;
+    const riskIds = arr(c.riskIds).map((rid) => extRiskToLocal[rid]).filter(Boolean);
+    arr(c.mitigaRiscos).forEach((ref) => {
+      const hit = S.risks.find((r) => r.code === String(ref).trim().toUpperCase().replace('-', '') || norm(r.title) === norm(ref));
+      if (hit && !riskIds.includes(hit.id)) riskIds.push(hit.id);
+    });
+    addControl({ ...c, riskIds, source: c.source || 'IA' });
+  });
+  arr(disk.pbcList).forEach((p) => p && !(p.id && S.pbcList.some((x) => x.id === p.id)) && addPbc({ ...p, source: p.source || 'IA' }, { notify: false }));
+  arr(disk.openPoints).forEach((o) => o && !(o.id && S.openPoints.some((x) => x.id === o.id)) && addOpenPoint({ ...o, source: o.source || 'IA' }));
+  arr(disk.divergences).forEach((d) => d && !(d.id && S.divergences.some((x) => x.id === d.id)) && addDivergence({ ...d, source: d.source || 'IA' }));
+  markChecklist(arr(disk.checklist).filter((c) => c && c.covered).map((c) => c.id));
+
+  const after = S.questions.length + S.risks.length + S.controls.length + S.pbcList.length + S.openPoints.length + S.divergences.length;
+  if (newQuestions.length) rt.focusedQuestionId = newQuestions[0].id;
+  return after - before;
+}
+
+// O arquivo foi alterado por fora quando sua data de modificação é posterior à última gravação do próprio app.
+function isExternalEdit(conflict) {
+  const ours = Date.parse((conflict.session && conflict.session.updatedAt) || '');
+  return Number.isNaN(ours) || conflict.mtime - ours > 3000;
+}
+
 function persistToDiskSoon() {
   if (!serverStatus.online || !S) return;
   clearTimeout(projectsStore.diskSyncTimer);
   projectsStore.diskSyncTimer = setTimeout(async () => {
     try {
-      const res = await api('/api/projects/session', { body: { session: S } });
+      let res = await diskSaveSession(S);
+      if (res && res.conflict) {
+        const savingId = S.id;
+        if (res.session && res.session.id === savingId && isExternalEdit(res)) {
+          const added = mergeExternalSession(res.session);
+          if (added > 0) {
+            renderAll();
+            syncFloatingTeleprompter();
+            safeSet(SESSION_PREFIX + S.id, JSON.stringify(S));
+            showToast(`${added} item(ns) adicionados por fora (agente na IDE) foram mesclados à reunião.`, 5000);
+          }
+        }
+        res = await diskSaveSession(S, { force: true });
+      }
       if (res && res.project) {
         S.projectId = res.project.id;
         safeSet(SESSION_PREFIX + S.id, JSON.stringify(S));
@@ -567,11 +673,25 @@ function validSourceIds(ids) {
   return ids.map((x) => String(x).trim().toUpperCase()).filter((x) => known.has(x));
 }
 
-function addTranscript(speaker, source, text) {
+// Papel de quem fala: 'auditor' (quem conduz), 'auditado' (quem responde) ou 'nota' (observação do auditor).
+function inferRole(speaker, source) {
+  const sp = norm(speaker);
+  if (source === 'mic') return 'auditor';
+  if (/^nota|observac/.test(sp)) return 'nota';
+  if (/^auditor\b/.test(sp)) return 'auditor';
+  const p = typeof parseParticipants === 'function' ? parseParticipants().find((x) => norm(x.name) === sp) : null;
+  return p ? p.role : 'auditado';
+}
+
+function isAuditorEntry(t) {
+  return (t.role || inferRole(t.speaker, t.source)) !== 'auditado';
+}
+
+function addTranscript(speaker, source, text, { time = '', role = '' } = {}) {
   const clean = String(text || '').trim();
   if (!clean) return null;
   S.transcriptSeq += 1;
-  const entry = { id: uid('tr'), seq: S.transcriptSeq, time: nowTime(), speaker, source, text: clean };
+  const entry = { id: uid('tr'), seq: S.transcriptSeq, time: time || nowTime(), speaker, source, role: role || inferRole(speaker, source), text: clean };
   S.transcript.push(entry);
   return entry;
 }
@@ -756,10 +876,15 @@ async function refreshServerStatus() {
     serverStatus.online = true;
     serverStatus.claude = Boolean(data.claude);
     serverStatus.gemini = Boolean(data.gemini);
+    serverStatus.whisper = Boolean(data.whisper);
+    serverStatus.whisperModel = data.whisperModel || '';
+    serverStatus.dataDir = data.dataDir || '';
+    serverStatus.migratedFrom = data.migratedFrom || '';
   } catch (_) {
     serverStatus.online = false;
     serverStatus.claude = false;
     serverStatus.gemini = false;
+    serverStatus.whisper = false;
   }
   updateSettingsBadge();
   updateCaptureWarning();
@@ -790,8 +915,79 @@ function captureMode() {
   return (S.consent && S.consent.mode) || 'full';
 }
 
+// Motor de transcrição efetivo. Nunca troca sozinho um motor local por um de nuvem.
+function transcribeEngine() {
+  return settings.transcribeEngine || 'whisper';
+}
+
+function transcribeEngineReady() {
+  if (!serverStatus.online) return false;
+  const e = transcribeEngine();
+  if (e === 'whisper') return serverStatus.whisper;
+  if (e === 'gemini') return serverStatus.gemini;
+  return true;
+}
+
+const ENGINE_LABELS = {
+  whisper: 'Whisper local — o áudio não sai deste computador',
+  gemini: 'Google Gemini (nuvem) — o áudio é enviado ao Google',
+  google: 'Reconhecimento gratuito do Google (nuvem) — o áudio é enviado ao Google'
+};
+
 function canTranscribeSystemAudio() {
-  return serverStatus.online && captureMode() === 'full';
+  return captureMode() === 'full' && transcribeEngineReady();
+}
+
+// Contexto curto para o Whisper acertar nomes de sistemas, siglas e pessoas (fica só neste computador).
+function transcriptionPrompt() {
+  const names = typeof parseParticipants === 'function' ? parseParticipants().map((p) => p.name) : [];
+  return ['Reunião de auditoria interna.', S.topic, S.scope, names.join(', '), settings.glossary].filter(Boolean).join(' ').slice(0, 580);
+}
+
+// Chamada em streaming: onDelta recebe o texto acumulado enquanto a resposta é gerada.
+async function claudeStream({ system, prompt, schema, model, effort, onDelta }) {
+  const res = await fetch('/api/claude/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-AuditPrompter': '1' },
+    body: JSON.stringify({ system, prompt, schema, model, effort, fast: true, max_tokens: 8000 })
+  });
+  if (!res.ok || !res.body) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      msg = (data && data.error && data.error.message) || msg;
+    } catch (_) {}
+    throw new Error(msg);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let acc = '';
+  let finalText = null;
+  const handleLine = (line) => {
+    if (!line.trim()) return;
+    const msg = JSON.parse(line);
+    if (msg.error) throw new Error(msg.error);
+    if (typeof msg.d === 'string') {
+      acc += msg.d;
+      if (onDelta) onDelta(acc);
+    }
+    if (msg.done) finalText = msg.text || acc;
+  };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      handleLine(line);
+    }
+  }
+  handleLine(buffer);
+  if (finalText === null) throw new Error('A resposta da IA foi interrompida antes do fim.');
+  return finalText;
 }
 
 async function geminiGenerate(parts, { json = false } = {}) {
@@ -813,9 +1009,10 @@ async function claudeMessage({ system, prompt, schema, model, effort }) {
 }
 
 // Chamada estruturada (JSON) independente do provedor.
-async function aiJson({ provider, systemBlocks, prompt, schema, model, effort }) {
+async function aiJson({ provider, systemBlocks, prompt, schema, model, effort, onDelta = null }) {
   if (provider === 'claude') {
-    const text = await claudeMessage({ system: systemBlocks.map((t) => ({ text: t })), prompt, schema, model, effort });
+    const args = { system: systemBlocks.map((t) => ({ text: t })), prompt, schema, model, effort };
+    const text = onDelta ? await claudeStream({ ...args, onDelta }) : await claudeMessage(args);
     return extractJsonObject(text);
   }
   const text = await geminiGenerate(
@@ -968,6 +1165,19 @@ function ensureConsent() {
     $('consentInformedChk').checked = false;
     const current = captureMode();
     document.querySelectorAll('input[name="captureMode"]').forEach((r) => (r.checked = r.value === current));
+    // Descreve com exatidão para onde o áudio e o texto vão nesta configuração.
+    const eng = transcribeEngine();
+    const prov = analysisProvider();
+    const where =
+      eng === 'whisper'
+        ? 'o áudio da reunião e o seu microfone são transcritos pelo Whisper local e NÃO saem deste computador'
+        : `o áudio da reunião e o seu microfone são enviados para transcrição em nuvem (${eng === 'gemini' ? 'Google Gemini' : 'reconhecimento gratuito do Google'})`;
+    const analysis =
+      prov === 'local'
+        ? 'A análise é feita pelo motor local (nada é enviado à internet).'
+        : `O TEXTO transcrito é enviado ao provedor de IA configurado (${prov === 'claude' ? 'Anthropic Claude' : 'Google Gemini'}) para gerar os insights.`;
+    if ($('consentFullDesc')) $('consentFullDesc').textContent = ` — ${where}. ${analysis} Ao marcar um momento, um print da tela compartilhada é salvo neste computador como evidência.`;
+    if ($('consentMicDesc')) $('consentMicDesc').textContent = ` — o áudio da reunião não é capturado; apenas a sua fala é transcrita (${eng === 'whisper' ? 'localmente' : 'em nuvem'}).`;
     $('consentModal').classList.remove('hidden');
   });
 }
@@ -1040,8 +1250,10 @@ async function toggleSystemAudio() {
     rt.sysSegments = createSegmentRecorder(audioOnly);
     rt.sysSegments.start();
     rt.sysEnergy = false;
-    clearInterval(rt.sysCycleTimer);
-    rt.sysCycleTimer = setInterval(flushSystemSegment, Math.max(5, Number(settings.sysChunkSec) || 7) * 1000);
+    rt.sysSegStartAt = Date.now();
+    rt.sysLastVoiceAt = 0;
+    startSegmentTicker();
+    if (transcribeEngine() === 'whisper' && serverStatus.whisper) api('/api/whisper/warmup').catch(() => {});
 
     $('sysAudioCard').classList.add('active-sys');
     $('sysAudioStateText').textContent = 'Ativo';
@@ -1058,14 +1270,13 @@ async function toggleSystemAudio() {
 }
 
 function stopSystemAudio() {
-  clearInterval(rt.sysCycleTimer);
-  rt.sysCycleTimer = null;
   if (rt.sysSegments) {
     // Aproveita o último trecho antes de desligar.
     const segs = rt.sysSegments;
     rt.sysSegments = null;
     if (rt.sysEnergy && canTranscribeSystemAudio()) {
-      segs.cut().then((blob) => blob && enqueueTranscription(blob, 'Auditado', 'sys'));
+      const speaker = currentSystemSpeaker();
+      segs.cut().then((blob) => blob && enqueueTranscription(blob, speaker, 'sys'));
     }
     setTimeout(() => segs.stop(), 50);
   }
@@ -1089,10 +1300,40 @@ async function flushSystemSegment(force = false) {
   if (!rt.sysSegments) return;
   const hadEnergy = rt.sysEnergy || force;
   rt.sysEnergy = false;
+  rt.sysSegStartAt = Date.now();
+  const speaker = currentSystemSpeaker();
   const blob = await rt.sysSegments.cut();
   if (!hadEnergy || !blob || blob.size < 800) return;
   if (!canTranscribeSystemAudio()) return;
-  enqueueTranscription(blob, 'Auditado', 'sys');
+  enqueueTranscription(blob, speaker, 'sys');
+}
+
+// Quem está falando no áudio da reunião agora (escolhido pelo auditor na barra de participantes).
+function currentSystemSpeaker() {
+  return (S && S.activeSpeaker) || 'Auditado';
+}
+
+// Corta os blocos de áudio nas PAUSAS da fala (e não em intervalos fixos): a frase chega inteira
+// à transcrição e o insight sai mais cedo. O tamanho máximo do bloco continua valendo como teto.
+function startSegmentTicker() {
+  if (rt.segmentTicker) return;
+  rt.segmentTicker = setInterval(() => {
+    if (!rt.sysSegments && !rt.micSegments) {
+      clearInterval(rt.segmentTicker);
+      rt.segmentTicker = null;
+      return;
+    }
+    sampleAudioLevels();
+    const now = Date.now();
+    const maxMs = Math.max(6, Number(settings.sysChunkSec) || 12) * 1000;
+    const due = (segStart, lastVoice, voiced) => {
+      const dur = now - segStart;
+      if (dur >= maxMs) return true;
+      return voiced && dur >= 2500 && lastVoice > 0 && now - lastVoice >= 800;
+    };
+    if (rt.sysSegments && due(rt.sysSegStartAt, rt.sysLastVoiceAt, rt.sysEnergy)) flushSystemSegment();
+    if (rt.micSegments && due(rt.micSegStartAt, rt.micLastVoiceAt, rt.micEnergy)) flushMicSegment();
+  }, 200);
 }
 
 // --- Microfone (auditor) --------------------------------------------------
@@ -1118,16 +1359,21 @@ async function toggleMicAudio() {
     rt.micAnalyser.fftSize = 256;
     source.connect(rt.micAnalyser);
 
+    // O reconhecimento de voz do navegador envia o áudio do microfone ao Google. Com o Whisper local
+    // selecionado, o microfone também é transcrito localmente (sem legenda instantânea, mas sem nuvem).
     const hasWebSpeech = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
     rt.webSpeechProducedAt = 0;
-    if (hasWebSpeech) {
+    if (hasWebSpeech && transcribeEngine() !== 'whisper') {
       startWebSpeechRecognition();
     }
-    if (serverStatus.online && captureMode() !== 'text_only') {
+    if (transcribeEngineReady() && captureMode() !== 'text_only') {
       rt.micSegments = createSegmentRecorder(micStream);
       rt.micSegments.start();
       rt.micEnergy = false;
-      rt.micCycleTimer = setInterval(flushMicSegment, Math.max(5, Number(settings.sysChunkSec) || 7) * 1000);
+      rt.micSegStartAt = Date.now();
+      rt.micLastVoiceAt = 0;
+      startSegmentTicker();
+      if (transcribeEngine() === 'whisper') api('/api/whisper/warmup').catch(() => {});
     }
 
     $('micAudioCard').classList.add('active-mic');
@@ -1151,11 +1397,13 @@ function stopMicAudio() {
       rec.stop();
     } catch (_) {}
   }
-  clearInterval(rt.micCycleTimer);
-  rt.micCycleTimer = null;
   if (rt.micSegments) {
-    rt.micSegments.stop();
+    const segs = rt.micSegments;
     rt.micSegments = null;
+    if (rt.micEnergy && transcribeEngineReady()) {
+      segs.cut().then((blob) => blob && blob.size >= 800 && enqueueTranscription(blob, 'Auditor', 'mic'));
+    }
+    setTimeout(() => segs.stop(), 50);
   }
   if (rt.micStream) {
     rt.micStream.getTracks().forEach((t) => t.stop());
@@ -1175,6 +1423,7 @@ async function flushMicSegment(force = false) {
   if (!rt.micSegments) return;
   const hadEnergy = rt.micEnergy || force;
   rt.micEnergy = false;
+  rt.micSegStartAt = Date.now();
   const blob = await rt.micSegments.cut();
   if (!hadEnergy || !blob || blob.size < 800) return;
   if (rt.webSpeechProducedAt && Date.now() - rt.webSpeechProducedAt < 6500 && !force) return;
@@ -1251,9 +1500,10 @@ async function processTranscriptionQueue() {
       updateCycleStatus('Transcrevendo áudio...');
       try {
         const audioPart = await blobToAudioPart(job.blob);
+        const engine = transcribeEngine();
         let text = '';
-        if (serverStatus.gemini) {
-          try {
+        if (engine === 'gemini') {
+          {
             text = await geminiGenerate([
               {
                 text:
@@ -1264,13 +1514,15 @@ async function processTranscriptionQueue() {
               },
               audioPart
             ]);
-          } catch (_) {}
-        }
-        if (!text || !text.trim()) {
+          }
+        } else {
+          // 'whisper' = 100% local; 'google' = nuvem, somente quando o auditor escolheu esse motor.
           const localRes = await api('/api/transcribe', {
             body: {
               audioBase64: audioPart.inlineData.data,
-              mimeType: audioPart.inlineData.mimeType
+              mimeType: audioPart.inlineData.mimeType,
+              engine,
+              prompt: engine === 'whisper' ? transcriptionPrompt() : ''
             }
           });
           text = (localRes && localRes.text) || '';
@@ -1284,7 +1536,11 @@ async function processTranscriptionQueue() {
         }
       } catch (err) {
         console.warn('Falha na transcrição:', err);
-        showToast(`Falha ao transcrever o áudio: ${err.message}`, 5000);
+        // Um aviso a cada 30 s no máximo: uma falha persistente não pode inundar a tela durante a reunião.
+        if (Date.now() - rt.transcribeErrorShownAt > 30000) {
+          rt.transcribeErrorShownAt = Date.now();
+          showToast(`Falha ao transcrever o áudio: ${err.message}`, 6000);
+        }
       }
     }
   } finally {
@@ -1298,39 +1554,47 @@ function updateLiveStatusIndicator() {
   $('liveStatusDot').classList.toggle('active', Boolean(rt.sysStream || rt.micStream));
 }
 
+// Mede o nível de áudio. Roda em setInterval (e não em requestAnimationFrame) porque o navegador
+// pausa a animação quando a aba fica em segundo plano — exatamente quando o auditor está no Teams.
+const vuData = new Uint8Array(64);
+function sampleAudioLevels() {
+  const now = Date.now();
+  if (rt.sysAnalyser) {
+    rt.sysAnalyser.getByteFrequencyData(vuData);
+    const avg = vuData.reduce((a, b) => a + b, 0) / vuData.length;
+    const peak = Math.max(...vuData);
+    const pct = Math.min(100, Math.round((avg / 45) * 100));
+    $('sysVuBar').style.width = `${pct}%`;
+    if (pct >= 1 || peak > 10) {
+      rt.sysEnergy = true;
+      $('captionDot').classList.add('speaking');
+    }
+    if (pct >= 3 || peak > 24) rt.sysLastVoiceAt = now;
+  }
+  if (rt.micAnalyser) {
+    rt.micAnalyser.getByteFrequencyData(vuData);
+    const avg = vuData.reduce((a, b) => a + b, 0) / vuData.length;
+    const peak = Math.max(...vuData);
+    const pct = Math.min(100, Math.round((avg / 45) * 100));
+    $('micVuBar').style.width = `${pct}%`;
+    if (pct >= 2 || peak > 14) {
+      rt.micEnergy = true;
+      $('captionDot').classList.add('speaking');
+    }
+    if (pct >= 4 || peak > 30) rt.micLastVoiceAt = now;
+  }
+}
+
 function startVuMeterLoop() {
   if (rt.vuFrame) return;
-  const data = new Uint8Array(64);
-  const tick = () => {
+  rt.vuFrame = setInterval(() => {
     if (!rt.sysAnalyser && !rt.micAnalyser) {
+      clearInterval(rt.vuFrame);
       rt.vuFrame = null;
       return;
     }
-    if (rt.sysAnalyser) {
-      rt.sysAnalyser.getByteFrequencyData(data);
-      const avg = data.reduce((a, b) => a + b, 0) / data.length;
-      const peak = Math.max(...data);
-      const pct = Math.min(100, Math.round((avg / 45) * 100));
-      $('sysVuBar').style.width = `${pct}%`;
-      if (pct >= 1 || peak > 10) {
-        rt.sysEnergy = true;
-        $('captionDot').classList.add('speaking');
-      }
-    }
-    if (rt.micAnalyser) {
-      rt.micAnalyser.getByteFrequencyData(data);
-      const avg = data.reduce((a, b) => a + b, 0) / data.length;
-      const peak = Math.max(...data);
-      const pct = Math.min(100, Math.round((avg / 45) * 100));
-      $('micVuBar').style.width = `${pct}%`;
-      if (pct >= 2 || peak > 14) {
-        rt.micEnergy = true;
-        $('captionDot').classList.add('speaking');
-      }
-    }
-    rt.vuFrame = requestAnimationFrame(tick);
-  };
-  rt.vuFrame = requestAnimationFrame(tick);
+    sampleAudioLevels();
+  }, 120);
 }
 
 function updateCaptureWarning() {
@@ -1343,8 +1607,15 @@ function updateCaptureWarning() {
     messages.push(
       captureMode() !== 'full'
         ? 'Modo de captura sem áudio da reunião: registre a fala do auditado no campo de anotação.'
-        : 'A fala do AUDITADO não está sendo transcrita: configure a chave do Google Gemini em "Configurações de IA" ou registre os pontos no campo de anotação. Hoje só o seu microfone é transcrito.'
+        : transcribeEngine() === 'whisper'
+          ? 'O áudio NÃO está sendo transcrito: o Whisper local não está instalado neste computador. Feche o programa, rode "pip install faster-whisper" (ou abra pelo Iniciar_Teleprompter.bat) e tente de novo — ou escolha outro motor em "Configurações de IA".'
+          : 'O áudio NÃO está sendo transcrito: o motor escolhido é o Google Gemini, mas não há chave configurada. Ajuste em "Configurações de IA" ou registre os pontos no campo de anotação.'
     );
+  } else if (serverStatus.online && rt.micStream && !rt.sysStream && !transcribeEngineReady() && captureMode() !== 'text_only') {
+    messages.push('O microfone NÃO está sendo transcrito: o motor de transcrição escolhido não está disponível. Verifique em "Configurações de IA".');
+  }
+  if (serverStatus.online && (rt.sysStream || rt.micStream) && transcribeEngineReady() && transcribeEngine() !== 'whisper') {
+    messages.push('Transcrição em NUVEM ativa: o áudio desta reunião está sendo enviado ao Google. Para manter o áudio só neste computador, escolha "Whisper local" em Configurações de IA.');
   }
   if (serverStatus.online && analysisProvider() === 'local' && (rt.sysStream || rt.micStream)) {
     messages.push('Sem chave de IA configurada: os insights vêm do motor local por palavras-chave (sugestões limitadas).');
@@ -1389,13 +1660,14 @@ function scheduleAnalysis() {
     .join(' ')
     .trim();
   const wordCount = unanalyzedText ? unanalyzedText.split(/\s+/).length : 0;
-  if (wordCount < 7) {
+  if (wordCount < 6) {
     updateCycleStatus('Ouvindo frase completa...');
     return;
   }
   clearTimeout(rt.analyzeTimer);
   const sinceLast = Date.now() - rt.lastAutoAnalysisAt;
-  const wait = Math.max(3500, Number(settings.minAnalyzeGapSec || 15) * 1000 - sinceLast);
+  // Os blocos já chegam cortados nas pausas da fala, então basta uma espera curta para juntar frases vizinhas.
+  const wait = Math.max(1200, Number(settings.minAnalyzeGapSec || 8) * 1000 - sinceLast);
   rt.analyzeDueAt = Date.now() + wait;
   rt.analyzeTimer = setTimeout(() => {
     rt.analyzeTimer = null;
@@ -1454,6 +1726,7 @@ async function runAnalysis({ manual = false, instruction = '', focusQuestionId =
     S.analyzedUpTo = upTo;
   } finally {
     rt.isAnalyzing = false;
+    setLivePreview('');
     if (!manual) rt.lastAutoAnalysisAt = Date.now();
     setAnalyzingUI(false);
     commit();
@@ -1494,27 +1767,30 @@ Como trabalhar:
 - "checklistCobertos": IDs do checklist (ex.: "chk-3") que as falas efetivamente cobriram.
 - "pontosEmAberto": perguntas do auditor que ficaram sem resposta, respostas contraditórias e pendências combinadas (ex.: "enviará o relatório depois").
 - "divergencias": só quando houver material de preparação e a fala contradisser o que está documentado (ex.: política diz alçada de R$ 50 mil e o auditado disse R$ 100 mil).
+- Cada fala traz o nome de quem falou. Quando houver mais de um entrevistado, diga no "topicSummary" quem afirmou o quê; se duas pessoas se contradisserem, registre em "pontosEmAberto" como "contradicao".
+- Se o contexto trouxer "MEMÓRIA DO PROJETO" (reuniões anteriores), use-a para não repetir o que já foi mapeado e registre como "contradicao" em "pontosEmAberto" qualquer fala que contrarie o que foi dito antes, citando a reunião anterior.
 - Escreva em português do Brasil. Seja conciso: o auditor lê durante a conversa.`;
 
+// A ordem das propriedades importa: a resposta chega em streaming e "text" (a pergunta a fazer)
+// vem primeiro para aparecer na tela antes de o restante do bloco terminar de ser gerado.
 const LIVE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['direcionamento', 'blocos', 'riscos', 'controles', 'checklistCobertos', 'pontosEmAberto', 'divergencias'],
+  required: ['blocos', 'direcionamento', 'riscos', 'controles', 'checklistCobertos', 'pontosEmAberto', 'divergencias'],
   properties: {
-    direcionamento: { type: 'string' },
     blocos: {
       type: 'array',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['priority', 'category', 'topicTitle', 'topicSummary', 'riskAlert', 'text', 'rationale', 'screenTitle', 'screenScript', 'ipeTip', 'sourceIds'],
+        required: ['text', 'priority', 'category', 'topicTitle', 'topicSummary', 'riskAlert', 'rationale', 'screenTitle', 'screenScript', 'ipeTip', 'sourceIds'],
         properties: {
+          text: { type: 'string' },
           priority: { type: 'string', enum: ['critica', 'alta', 'normal'] },
           category: { type: 'string' },
           topicTitle: { type: 'string' },
           topicSummary: { type: 'string' },
           riskAlert: { type: 'string' },
-          text: { type: 'string' },
           rationale: { type: 'string' },
           screenTitle: { type: 'string' },
           screenScript: { type: 'string' },
@@ -1523,6 +1799,7 @@ const LIVE_SCHEMA = {
         }
       }
     },
+    direcionamento: { type: 'string' },
     riscos: {
       type: 'array',
       items: {
@@ -1604,7 +1881,44 @@ function buildSessionContextBlock() {
   } else {
     lines.push('', 'MATERIAL DE PREPARAÇÃO: nenhum (não gere divergências).');
   }
+  const mem = S.projectMemory;
+  if (mem && Array.isArray(mem.meetings) && mem.meetings.length) {
+    lines.push('', 'MEMÓRIA DO PROJETO (reuniões anteriores desta mesma auditoria):');
+    mem.meetings.forEach((m) => {
+      lines.push(`- ${m.title}${m.date ? ` (${m.date})` : ''}${m.participants ? ` — participantes: ${m.participants}` : ''}${m.topics && m.topics.length ? ` — assuntos mapeados: ${m.topics.join('; ')}` : ''}`);
+    });
+    if (Array.isArray(mem.statements) && mem.statements.length) {
+      lines.push('Afirmações registradas em reuniões anteriores (para detectar contradições):');
+      mem.statements.forEach((s) => lines.push(`- [${s.meeting}] ${s.text}`));
+    }
+  }
   return lines.join('\n');
+}
+
+// Prévia do insight enquanto a IA ainda está escrevendo (extraída do JSON parcial do streaming).
+function setLivePreview(text) {
+  rt.livePreview = text || '';
+  const el = $('liveInsightPreview');
+  if (el) {
+    el.classList.toggle('hidden', !rt.livePreview);
+    const body = $('liveInsightPreviewText');
+    if (body) body.textContent = rt.livePreview ? `“${rt.livePreview}”` : '';
+  }
+  const win = rt.pipWindow;
+  if (win && !win.closed) {
+    const pv = win.document.getElementById('pipPreview');
+    if (pv) pv.innerHTML = rt.livePreview ? `<div class="preview"><span class="tag">Insight chegando…</span>“${escapeHtml(rt.livePreview)}”</div>` : '';
+  }
+}
+
+function previewFromPartialJson(partial) {
+  const m = /"text"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(partial);
+  if (!m || m[1].length < 12) return '';
+  try {
+    return JSON.parse(`"${m[1].replace(/\\$/, '')}"`);
+  } catch (_) {
+    return m[1].replace(/\\n/g, ' ').replace(/\\"/g, '"');
+  }
 }
 
 function formatTranscriptLine(t) {
@@ -1648,7 +1962,11 @@ async function callLiveAnalysis(provider, newEntries, instruction) {
     prompt: buildLivePrompt(newEntries, instruction),
     schema: LIVE_SCHEMA,
     model: settings.liveModel,
-    effort: settings.liveEffort
+    effort: settings.liveEffort,
+    onDelta: (acc) => {
+      const pv = previewFromPartialJson(acc);
+      if (pv && pv !== rt.livePreview) setLivePreview(pv);
+    }
   });
 }
 
@@ -1874,7 +2192,7 @@ function analyzeWithLocalAuditEngine(entries, { instruction = '', focusQuestionI
     }
   }
 
-  const relevant = entries.filter((e) => e.speaker !== 'Auditor');
+  const relevant = entries.filter((e) => !isAuditorEntry(e));
   const text = norm(relevant.map((e) => e.text).join(' '));
   const sourceIds = relevant.map((e) => `T${e.seq}`);
   const lastSummary = relevant.length ? relevant[relevant.length - 1].text : '';
@@ -1928,8 +2246,9 @@ function submitManualNote() {
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
-  const speaker = $('speakerSelect').value || 'Auditado';
-  addTranscript(speaker, 'manual', text);
+  const chosen = $('speakerSelect').value || 'Auditado';
+  const speaker = chosen === 'Auditado' ? currentSystemSpeaker() : chosen;
+  addTranscript(speaker, 'manual', text, { role: chosen === 'Auditado' ? 'auditado' : chosen === 'Auditor' ? 'auditor' : 'nota' });
   $('liveInterimText').textContent = `Mapeando: "${text}"`;
   commit();
   runAnalysis({ manual: true });
@@ -2017,12 +2336,17 @@ function focusedQuestion() {
   return S.questions.find((q) => q.id === rt.focusedQuestionId) || filteredQuestions().find((q) => !q.asked) || null;
 }
 
-function markMoment(fromEntryId) {
+function markMoment(fromEntryId, { requireShot = false } = {}) {
   let entries;
   if (fromEntryId) {
     entries = S.transcript.filter((t) => t.id === fromEntryId);
   } else {
     entries = S.transcript.slice(-3);
+  }
+  const canShoot = !fromEntryId && typeof screenShotAvailable === 'function' && screenShotAvailable();
+  if (requireShot && !canShoot) {
+    showToast('Print indisponível: ligue o "Áudio da Reunião" compartilhando a janela/aba da reunião para capturar a tela.', 6000);
+    return;
   }
   const fq = focusedQuestion();
   const moment = {
@@ -2031,11 +2355,15 @@ function markMoment(fromEntryId) {
     note: '',
     excerpt: entries.map((t) => `[${t.time}] ${t.speaker}: ${t.text}`).join('\n'),
     transcriptIds: entries.map((t) => `T${t.seq}`),
-    questionText: fq ? fq.text : ''
+    questionText: fq ? fq.text : '',
+    shotId: '',
+    shotSessionId: ''
   };
   S.moments.unshift(moment);
   commit();
-  showToast(`★ Momento marcado às ${moment.time}. Anote o contexto em "Transcrição & Momentos".`);
+  showToast(`★ Momento marcado às ${moment.time}${canShoot ? ' — capturando print da tela…' : ''}. Anote o contexto em "Transcrição & Momentos".`);
+  // O print da tela compartilhada vira evidência do walkthrough (salvo só neste computador).
+  if (canShoot) attachScreenShotToMoment(moment);
 }
 
 // ============================================================================
@@ -2065,6 +2393,8 @@ function handleHotkey(e) {
       if (q) questionToPbc(q.id);
     },
     KeyM: () => markMoment(),
+    KeyS: () => markMoment(null, { requireShot: true }),
+    KeyE: () => typeof openClosingReview === 'function' && openClosingReview(),
     KeyN: () => {
       window.focus();
       switchView('live');
@@ -2072,6 +2402,14 @@ function handleHotkey(e) {
     },
     KeyF: () => openFloatingTeleprompter()
   };
+  // Ctrl+Alt+1..9: define quem está falando agora no áudio da reunião.
+  const digit = /^Digit([1-9])$/.exec(e.code);
+  if (digit && typeof setActiveSpeakerByIndex === 'function') {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveSpeakerByIndex(Number(digit[1]) - 1);
+    return;
+  }
   const fn = map[e.code];
   if (fn) {
     e.preventDefault();
@@ -2317,8 +2655,8 @@ function renderChecklist() {
     .join('');
 }
 
-const SOURCE_CLASSES = { mic: 'spk-auditor', sys: 'spk-auditado', manual: 'spk-manual', simulado: 'spk-sim' };
-const SOURCE_LABELS = { mic: 'microfone', sys: 'áudio da reunião', manual: 'registro manual', simulado: 'simulação' };
+const SOURCE_CLASSES = { mic: 'spk-auditor', sys: 'spk-auditado', manual: 'spk-manual', simulado: 'spk-sim', import: 'spk-auditado' };
+const SOURCE_LABELS = { mic: 'microfone', sys: 'áudio da reunião', manual: 'registro manual', simulado: 'simulação', import: 'importado' };
 
 function renderTranscript() {
   const feed = $('transcriptFeed');
@@ -2336,7 +2674,7 @@ function renderTranscript() {
         <div class="tr-meta">
           <span class="tr-id">T${t.seq}</span>
           <span class="tr-time">${escapeHtml(t.time)}</span>
-          <span class="speaker-chip ${SOURCE_CLASSES[t.source] || 'spk-manual'}">${escapeHtml(t.speaker)}</span>
+          <button class="speaker-chip speaker-chip-btn ${isAuditorEntry(t) ? 'spk-auditor' : SOURCE_CLASSES[t.source] || 'spk-manual'}" data-tr-speaker="${t.id}" title="Clique para corrigir quem falou">${escapeHtml(t.speaker)} ✎</button>
           <span class="tr-source">${escapeHtml(SOURCE_LABELS[t.source] || t.source)}</span>
           <span class="tr-actions">
             <button class="btn-inline" data-tr-moment="${t.id}" title="Marcar esta fala como momento">★</button>
@@ -2362,6 +2700,13 @@ function renderMoments() {
       <div class="pbc-card moment-card">
         <div class="risk-header"><span class="risk-title">★ ${escapeHtml(m.time)}</span>
           <span>${m.transcriptIds.map((id) => `<button class="src-link" data-src="${id}">${id}</button>`).join('')}</span></div>
+        ${
+          m.shotId
+            ? `<a class="moment-shot" href="/api/evidence?session=${encodeURIComponent(m.shotSessionId || S.id)}&id=${encodeURIComponent(m.shotId)}" target="_blank" rel="noopener" title="Abrir o print em tamanho real">
+                 <img loading="lazy" alt="Print da tela compartilhada às ${escapeAttr(m.time)}" src="/api/evidence?session=${encodeURIComponent(m.shotSessionId || S.id)}&id=${encodeURIComponent(m.shotId)}" />
+               </a>`
+            : ''
+        }
         ${m.excerpt ? `<pre class="moment-excerpt">${escapeHtml(m.excerpt)}</pre>` : '<div class="hint-text">Sem falas registradas no momento da marcação.</div>'}
         ${m.questionText ? `<div class="hint-text">Pergunta em foco: “${escapeHtml(m.questionText)}”</div>` : ''}
         <textarea class="moment-note" data-moment-note="${m.id}" rows="2" placeholder="Anotação do auditor (ex.: gestor confirmou que aprova por WhatsApp)">${escapeHtml(m.note)}</textarea>
@@ -2490,6 +2835,7 @@ function renderMatrix() {
           <div class="pbc-card ${o.status === 'resolvido' ? 'is-resolved' : ''}">
             <div class="chip-row"><span class="meta-pill">${KIND_LABELS[o.kind] || o.kind}</span><span class="origin-chip ${o.source === 'IA' ? 'origin-ai' : 'origin-plan'}">${escapeHtml(o.source)}</span><span class="hint-text">${escapeHtml(o.time || '')}</span></div>
             <div class="risk-desc">${escapeHtml(o.text)}</div>
+            ${o.fromMeeting ? `<div class="hint-text">Pendência trazida de: ${escapeHtml(o.fromMeeting)}</div>` : ''}
             ${o.sourceIds && o.sourceIds.length ? `<div class="src-row">Fonte: ${sourceLinks(o.sourceIds)}</div>` : ''}
             <div class="card-actions">
               <button class="btn-inline" data-op-toggle="${o.id}">${o.status === 'aberto' ? 'Marcar resolvido' : 'Reabrir'}</button>
@@ -2710,21 +3056,31 @@ function setupPipWindowDOM(win) {
       .acts { display:flex; gap:5px; margin-top:8px; flex-wrap:wrap; }
       input { width:100%; box-sizing:border-box; background:${dark ? '#111114' : '#fff'}; color:inherit; border:1px solid ${dark ? '#232329' : '#cbd5e1'}; border-radius:4px; padding:7px 8px; font-size:.78rem; }
       .keys { font-size:.64rem; opacity:.55; }
+      .preview { border:1px dashed #0284c7; background:${dark ? '#0b1a26' : '#f0f9ff'}; padding:8px 10px; border-radius:4px; font-size:.86rem; line-height:1.4; }
+      .spk { display:flex; gap:4px; flex-wrap:wrap; }
+      .spk button { padding:3px 7px; font-size:.66rem; }
     </style>`;
   win.document.body.innerHTML = `
     <div class="hdr">
       <span class="ttl">AUDITPROMPTER</span>
       <span>
-        <button class="ghost" id="pipMoment" title="Ctrl+Alt+M">★ Momento</button>
+        <button class="ghost" id="pipMoment" title="Ctrl+Alt+M — marca o momento e salva um print da tela compartilhada">★ Momento + print</button>
         <button class="ghost" id="pipNext" title="Ctrl+Alt+J">Próxima ›</button>
         <button id="pipAnalyze" title="Ctrl+Alt+A">Insight</button>
       </span>
     </div>
     <div id="pipWarn"></div>
+    <div class="spk" id="pipSpeakers"></div>
     <div class="coach" id="pipCoach"></div>
+    <div id="pipPreview"></div>
     <input type="text" id="pipNote" placeholder="Fala do auditado / observação (Enter)" />
     <div id="pipCards"></div>
-    <div class="keys">Ctrl+Alt: A insight · J/K navegar · D feita · P PBC · M momento</div>`;
+    <div class="keys">Ctrl+Alt: A insight · J/K navegar · D feita · P PBC · M momento · S print · 1-9 quem fala · E encerrar</div>`;
+
+  win.document.getElementById('pipSpeakers').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-spk]');
+    if (b && typeof setActiveSpeaker === 'function') setActiveSpeaker(b.dataset.spk);
+  });
 
   win.document.getElementById('pipAnalyze').addEventListener('click', () => runAnalysis({ manual: true }));
   win.document.getElementById('pipNext').addEventListener('click', () => moveFocus(1));
@@ -2732,7 +3088,7 @@ function setupPipWindowDOM(win) {
   const input = win.document.getElementById('pipNote');
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && input.value.trim()) {
-      addTranscript('Auditado', 'manual', input.value.trim());
+      addTranscript(currentSystemSpeaker(), 'manual', input.value.trim(), { role: 'auditado' });
       input.value = '';
       commit();
       runAnalysis({ manual: true });
@@ -2759,6 +3115,14 @@ function syncFloatingTeleprompter() {
   doc.getElementById('pipWarn').innerHTML = warnEl && !warnEl.classList.contains('hidden') ? `<div class="warn">${warnEl.innerHTML}</div>` : '';
   coach.innerHTML = `<strong>Foco:</strong> ${escapeHtml(String(S.coachingTip || '').replace(/^[\u{1F300}-\u{1FAFF}☀-➿]+\s*/u, ''))}`;
   doc.body.style.setProperty('--fs', `${settings.fontSize}rem`);
+  const spk = doc.getElementById('pipSpeakers');
+  if (spk && typeof speakerOptions === 'function') {
+    const opts = speakerOptions();
+    spk.innerHTML =
+      opts.length > 1
+        ? opts.map((o, i) => `<button class="${o.name === currentSystemSpeaker() ? '' : 'ghost'}" data-spk="${escapeAttr(o.name)}" title="Ctrl+Alt+${i + 1}">${i + 1}· ${escapeHtml(o.name)}</button>`).join('')
+        : '';
+  }
 
   const pending = filteredQuestions().filter((q) => !q.asked);
   const focusIdx = Math.max(0, pending.findIndex((q) => q.id === rt.focusedQuestionId));
@@ -2828,6 +3192,16 @@ function openSettings() {
   $('reportModelSelect').value = settings.reportModel;
   $('geminiModelSelect').value = settings.geminiModel;
   $('auditorPersonaInput').value = settings.persona;
+  if ($('transcribeEngineSelect')) {
+    $('transcribeEngineSelect').value = settings.transcribeEngine;
+    $('transcribeEngineStatus').textContent = !serverStatus.online
+      ? 'Servidor local offline.'
+      : serverStatus.whisper
+        ? `Whisper local instalado (modelo "${serverStatus.whisperModel}").`
+        : 'Whisper local NÃO instalado neste computador — rode "pip install faster-whisper" ou abra pelo Iniciar_Teleprompter.bat.';
+  }
+  if ($('glossaryInput')) $('glossaryInput').value = settings.glossary || '';
+  if ($('dataDirLabel')) $('dataDirLabel').textContent = serverStatus.dataDir || '(servidor offline)';
   $('claudeApiKeyInput').value = '';
   $('geminiApiKeyInput').value = '';
   $('settingsTestResult').textContent = '';
@@ -2862,16 +3236,14 @@ async function saveSettings() {
   settings.reportModel = $('reportModelSelect').value;
   settings.geminiModel = $('geminiModelSelect').value;
   settings.persona = $('auditorPersonaInput').value.trim();
+  if ($('transcribeEngineSelect')) settings.transcribeEngine = $('transcribeEngineSelect').value;
+  if ($('glossaryInput')) settings.glossary = $('glossaryInput').value.trim();
   persistSettings();
   try {
     await saveKeysFromInputs();
   } catch (err) {
     $('settingsTestResult').textContent = `Não foi possível salvar as chaves: ${err.message}`;
     return;
-  }
-  if (rt.sysCycleTimer) {
-    clearInterval(rt.sysCycleTimer);
-    rt.sysCycleTimer = setInterval(flushSystemSegment, settings.sysChunkSec * 1000);
   }
   $('settingsModal').classList.add('hidden');
   updateCaptureWarning();
@@ -3085,7 +3457,7 @@ async function syncProjectsWithServer(queryStr = '') {
           if (!diskIds.has(loc.id)) {
             const full = loc.id === S.id ? S : loadSessionById(loc.id);
             if (full) {
-              const saved = await api('/api/projects/session', { body: { session: full } });
+              const saved = await diskSaveSession(full, { force: true });
               if (loc.id === S.id && saved && saved.project) {
                 S.projectId = saved.project.id;
                 safeSet(SESSION_PREFIX + S.id, JSON.stringify(S));
@@ -3095,7 +3467,7 @@ async function syncProjectsWithServer(queryStr = '') {
           }
         }
         if (!diskIds.has(S.id)) {
-          const saved = await api('/api/projects/session', { body: { session: S } });
+          const saved = await diskSaveSession(S, { force: true });
           if (saved && saved.project) {
             S.projectId = saved.project.id;
             safeSet(SESSION_PREFIX + S.id, JSON.stringify(S));
@@ -3127,7 +3499,10 @@ async function fetchSessionFromDiskOrLocal(sessionId) {
   if (serverStatus.online) {
     try {
       const res = await api(`/api/projects/session?id=${encodeURIComponent(sessionId)}`, { method: 'GET' });
-      if (res && res.session) return upgradeSession(res.session);
+      if (res && res.session) {
+        if (typeof res.mtime === 'number') diskMtimes[sessionId] = res.mtime;
+        return upgradeSession(res.session);
+      }
     } catch (_) {}
   }
   return loadSessionById(sessionId);
@@ -3214,6 +3589,7 @@ function renderSessions() {
         </div>
         <div class="card-actions" style="margin-top:0;">
           <button class="btn-solid-sm" data-prj-new-meet="${escapeAttr(selectedProject.id)}">+ Nova Reunião neste Projeto</button>
+          <button class="btn-ghost-sm" data-prj-consolidated="${escapeAttr(selectedProject.id)}" title="Riscos, controles, PBC e pendências de todas as reuniões deste projeto, sem duplicidade">Visão consolidada do projeto</button>
           <button class="btn-inline" data-prj-edit="${escapeAttr(selectedProject.id)}">Editar Projeto</button>
           <button class="btn-inline" data-prj-del="${escapeAttr(selectedProject.id)}">Excluir Projeto</button>
         </div>
@@ -3475,7 +3851,15 @@ async function createNewSession(explicitProjectId = '') {
   if (!(await stopCaptureIfNeeded('iniciar uma nova reunião no projeto'))) return;
 
   persistNow();
-  const prevSession = S ? JSON.parse(JSON.stringify(S)) : null;
+  // A base do "aproveitar dados" é a reunião mais recente DESTE projeto (e não a que estiver aberta, que pode ser de outro).
+  const projectIdForNew = prj ? prj.id : targetPid;
+  let prevSession = S && S.projectId === projectIdForNew ? JSON.parse(JSON.stringify(S)) : null;
+  if (!prevSession) {
+    const latest = projectsStore.sessions.filter((s) => s.projectId === projectIdForNew).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))[0];
+    if (latest) prevSession = await fetchSessionFromDiskOrLocal(latest.id);
+  }
+  // Memória do projeto: o que já foi mapeado e o que ficou pendente em TODAS as reuniões anteriores.
+  const carry = typeof loadProjectCarryOver === 'function' ? await loadProjectCarryOver(projectIdForNew) : null;
   resetRuntimeForSession();
 
   const keepMatrix = String(values.carryForward || '').startsWith('Sim');
@@ -3500,11 +3884,28 @@ async function createNewSession(explicitProjectId = '') {
     S.scope = prj.clientUnit || S.scope;
   }
 
+  let carriedPoints = 0;
+  if (carry) {
+    S.projectMemory = carry.memory;
+    if (keepMatrix) {
+      carry.openPoints.forEach((o) => {
+        const item = addOpenPoint({ text: o.text, kind: o.kind, source: 'Reunião anterior' });
+        if (item) {
+          item.fromMeeting = o.meeting;
+          carriedPoints += 1;
+        }
+      });
+    }
+  }
+
   persistNow();
   fillScopeForm();
   commit();
   switchView('live');
-  showToast(`Reunião iniciada: ${S.meetingTitle}`);
+  showToast(
+    `Reunião iniciada: ${S.meetingTitle}${carry && carry.memory.meetings.length ? ` — memória de ${carry.memory.meetings.length} reunião(ões) anterior(es) carregada${carriedPoints ? `, ${carriedPoints} pendência(s) em aberto trazida(s)` : ''}.` : ''}`,
+    6000
+  );
 }
 
 async function openSession(id) {
@@ -3554,7 +3955,7 @@ async function renameMeetingModal(id) {
   if (S && S.id === id) S.meetingTitle = full.meetingTitle;
   safeSet(SESSION_PREFIX + full.id, JSON.stringify(full));
   if (serverStatus.online) {
-    await api('/api/projects/session', { body: { session: full } });
+    await diskSaveSession(full, { force: true });
     await syncProjectsWithServer(projectsStore.searchQuery);
   }
   renderHeader();
@@ -3598,7 +3999,7 @@ async function importSessionFile(file) {
     S = session;
     persistNow();
     if (serverStatus.online) {
-      await api('/api/projects/session', { body: { session: S } });
+      await diskSaveSession(S, { force: true });
       await syncProjectsWithServer();
     }
     fillScopeForm();
@@ -3894,7 +4295,8 @@ function renderReportPreview() {
     <p class="hint-text">${S.questions.filter((q) => !q.asked).length} pergunta(s) do teleprompter não foram marcadas como feitas.</p>
 
     <h3>8. Momentos Marcados</h3>
-    ${tableHtml(['Horário', 'Anotação do auditor', 'Trecho'], S.moments.map((m) => [m.time, m.note, m.excerpt]), 'Nenhum momento marcado.')}
+    ${tableHtml(['Horário', 'Anotação do auditor', 'Trecho', 'Print'], S.moments.map((m) => [m.time, m.note, m.excerpt, m.shotId ? 'Sim' : '—']), 'Nenhum momento marcado.')}
+    ${typeof momentShotsGalleryHtml === 'function' ? momentShotsGalleryHtml() : ''}
 
     ${
       includeTranscript
@@ -4526,6 +4928,9 @@ function buildExportPayload() {
     openPoints: S.openPoints,
     divergences: S.divergences,
     questions: S.questions,
+    sessionId: S.id,
+    meetingTitle: S.meetingTitle || '',
+    moments: S.moments.map((mo) => ({ time: mo.time, note: mo.note || '', excerpt: mo.excerpt || '', transcriptIds: mo.transcriptIds || [], shotId: mo.shotSessionId && mo.shotSessionId !== S.id ? '' : mo.shotId || '' })),
     includeTranscript,
     transcript: includeTranscript ? S.transcript : []
   };
@@ -5127,6 +5532,7 @@ function bindEvents() {
       const btn = e.target.closest('button');
       if (!btn) return;
       if (btn.dataset.prjNewMeet) createNewSession(btn.dataset.prjNewMeet);
+      if (btn.dataset.prjConsolidated && typeof openProjectConsolidated === 'function') openProjectConsolidated(btn.dataset.prjConsolidated);
       if (btn.dataset.prjEdit) editProjectModal(btn.dataset.prjEdit);
       if (btn.dataset.prjDel) deleteProjectConfirm(btn.dataset.prjDel);
     });
@@ -5214,6 +5620,7 @@ function bindEvents() {
 function openCopilotBridgeModal() {
   persistNow();
   if ($('bridgeSessionIdLabel')) $('bridgeSessionIdLabel').textContent = S.id || 'atual';
+  if ($('bridgeDataDirLabel')) $('bridgeDataDirLabel').textContent = serverStatus.dataDir || 'projetos_auditoria';
   if ($('bridgePasteJsonInput')) $('bridgePasteJsonInput').value = '';
   if ($('copilotBridgeModal')) $('copilotBridgeModal').classList.remove('hidden');
 }
@@ -5289,7 +5696,8 @@ async function copyFreeClaudePrompt() {
 
 async function copyAntigravityCommand() {
   persistNow();
-  const cmd = `Leia a sessão ativa em projetos_auditoria/sessoes/${S.id}.json, analise as últimas falas da transcrição segundo COSO/SOX/IIA/IPE e atualize o arquivo JSON da sessão adicionando novos insights em questions, risks, controls e pbcList.`;
+  const filePath = `${serverStatus.dataDir || 'projetos_auditoria'}${serverStatus.dataDir.includes('\\') ? '\\sessoes\\' : '/sessoes/'}${S.id}.json`;
+  const cmd = `Leia a sessão ativa em "${filePath}", analise as últimas falas da transcrição segundo COSO/SOX/IIA/IPE e atualize o arquivo JSON da sessão ACRESCENTANDO novos itens em questions, risks, controls, pbcList e openPoints (não remova nem reescreva os itens existentes e não altere o campo updatedAt).`;
   try {
     await navigator.clipboard.writeText(cmd);
     showToast('Comando copiado! Cole no chat do Antigravity na IDE.');
@@ -5304,7 +5712,10 @@ function applyPastedCopilotJson() {
     showToast('Cole a resposta JSON gerada pelo Claude.ai ou Antigravity primeiro.');
     return;
   }
-  const parsed = extractJson(raw);
+  let parsed = null;
+  try {
+    parsed = extractJsonObject(raw);
+  } catch (_) {}
   if (!parsed || typeof parsed !== 'object') {
     showToast('JSON inválido. Certifique-se de copiar o bloco JSON completo.');
     return;
@@ -5318,13 +5729,15 @@ function applyPastedCopilotJson() {
 
 async function syncActiveSessionFromDisk() {
   try {
-    const res = await api(`/api/projects/session?id=${encodeURIComponent(S.id)}`);
+    const res = await api(`/api/projects/session?id=${encodeURIComponent(S.id)}`, { method: 'GET' });
     if (res && res.session) {
-      S = normalizeState(res.session);
-      fillScopeForm();
-      renderAll();
+      // Mescla o que o agente acrescentou no arquivo sem descartar o que está na tela (falas novas, edições).
+      const added = mergeExternalSession(res.session);
+      if (typeof res.mtime === 'number') diskMtimes[S.id] = res.mtime;
+      S.analyzedUpTo = S.transcript.length;
+      commit();
       if ($('copilotBridgeModal')) $('copilotBridgeModal').classList.add('hidden');
-      showToast('✓ Sessão sincronizada com as atualizações do Antigravity no disco!');
+      showToast(added > 0 ? `✓ ${added} item(ns) novo(s) trazidos do disco para a reunião.` : 'Nenhum item novo no arquivo da sessão — o agente já gravou as alterações?', 5000);
     }
   } catch (err) {
     showToast(`Não foi possível sincronizar do disco: ${err.message}`);
