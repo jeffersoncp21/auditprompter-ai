@@ -1,87 +1,89 @@
-# Manual Prático: Usando o AuditPrompter com Claude ou Antigravity Sem API Externa Paga
+# Manual Oficial Completo: Usando o AuditPrompter AI COM API e SEM API Externa
 
-Este guia mostra como qualquer aluno ou auditor pode utilizar **100% dos recursos do AuditPrompter AI** (transcrição ao vivo da reunião, insights pareados COSO/SOX/IIA/IPE, Matriz RCM, 5W2H e exportação em Word `.docx` e Excel `.xlsx`) **sem precisar pagar por uma chave de API externa**.
-
----
-
-## Como a Transcrição de Áudio Funciona Sem API Paga?
-
-A escuta ao vivo do **AuditPrompter** já é **100% gratuita por padrão**:
-1. **Áudio da Reunião (Teams, Zoom, Google Meet):** capturado pelo navegador e transcrito localmente pelo servidor (`server.js`) usando **FFmpeg + Python SpeechRecognition** (`pt-BR`), sem exigir chave da OpenAI, Anthropic ou Gemini.
-2. **Seu Microfone:** transcrito gratuitamente em tempo real pela API nativa de reconhecimento de voz do navegador (Google Chrome ou Microsoft Edge).
-3. **Exportação de Relatórios (`.docx` e `.xlsx`):** gerada localmente em Python (`python-docx` e `openpyxl`), sem custo de API.
-
-Para a **inteligência de análise de auditoria**, você pode escolher qualquer um dos **4 modos gratuitos** abaixo:
+Este guia apresenta o passo a passo completo para instalar, configurar e operar o **AuditPrompter AI** tanto no modo **100% automatizado COM API Externa (Anthropic Claude / Google Gemini)** quanto no modo **SEM API Externa Paga (Antigravity na IDE, Claude.ai Web Gratuito e Motor Especialista Local)**.
 
 ---
 
-## Modo 1 — Usando com o Antigravity (Direto na IDE, Sem API Paga)
+## Parte 1 — Instalação e Captura de Áudio da Reunião
 
-Se você está rodando o projeto dentro do **Antigravity**, o próprio agente da IDE funciona como seu **Auditor Líder de IA gratuito**, pois o AuditPrompter salva todas as falas em tempo real na pasta `projetos_auditoria/sessoes/`.
+### 1.1 Pré-requisitos e Inicialização
+- **Pré-requisitos:** [Node.js](https://nodejs.org/) (v18+), [Python 3.9+](https://www.python.org/), navegador Chrome/Edge e FFmpeg (`winget install Gyan.FFmpeg`).
+- **Inicialização Rápida no Windows:** Dê duplo clique em **`Iniciar_Teleprompter.bat`** (instala dependências Node/Python e abre `http://localhost:3000`).
+- **Via Terminal:**
+  ```bash
+  git clone https://github.com/jeffersoncp21/auditprompter-ai.git
+  cd auditprompter-ai
+  npm install && pip install -r requirements.txt && npm start
+  ```
 
-### Passo a Passo Durante a Reunião:
-1. Abra a pasta do projeto no **Antigravity** e inicie o servidor (`Iniciar_Teleprompter.bat` ou `npm start`).
-2. Na tela do **AuditPrompter** (`http://localhost:3000`), ative o **Áudio da Reunião** e/ou **Microfone** normalmente.
-3. Clique no botão **`⚡ Claude / Antigravity (Sem API)`** na barra de ações do Mapeamento Ao Vivo.
-4. Clique em **`📋 Copiar Comando para o Chat do Antigravity`** e cole no chat do Antigravity na IDE:
+### 1.2 Ligando a Escuta Ao Vivo
+1. No topo da tela, clique em **Áudio da Reunião**, escolha a guia/janela da call (Teams, Zoom, Google Meet) e marque **Compartilhar áudio da guia/sistema**.
+2. Clique em **Microfone** para registrar também as perguntas feitas por você (auditor).
+
+---
+
+## Parte 2 — Uso COM API Externa (Automação 100% em Tempo Real)
+
+Com uma chave de API configurada, o AuditPrompter analisa automaticamente cada pausa na fala do auditado, gera cards pareados na hora e consolida a Carta PBC e o Papel de Trabalho com 1 clique.
+
+### 2.1 Configurando com API da Anthropic (Claude Opus / Sonnet / Haiku)
+1. Acesse **[console.anthropic.com](https://console.anthropic.com)** (*Settings → API Keys*) e gere uma chave (`sk-ant-api03-...`). Certifique-se de ter créditos ativos em *Billing*.
+2. No menu lateral esquerdo do AuditPrompter, clique em **Motor de IA & API**.
+3. Em **Provedor de Análise**, selecione **Anthropic Claude (via API Key)** e cole sua chave no campo da Anthropic.
+4. Escolha os modelos recomendados:
+   - **Modelo ao vivo (insights):** `Claude Sonnet 5.5` (mais rápido) ou `Claude Opus 5.5` (máximo rigor analítico), com profundidade **Baixa** durante a entrevista.
+   - **Modelo do relatório / ata:** `Claude Opus 5.5`.
+5. Clique em **Testar Anthropic** para validar a conexão e depois em **Salvar**.
+   - *Segurança:* Sua chave fica gravada apenas no seu computador (`%APPDATA%\AuditPrompter\config.json`), fora do navegador e do Git.
+
+### 2.2 Configurando com API do Google Gemini (Plano Pago ou Gratuito AI Studio)
+1. Acesse **[aistudio.google.com/apikey](https://aistudio.google.com/apikey)** e clique em **Create API Key** (`AIzaSy...`). Funciona tanto no plano gratuito do Google AI Studio quanto em contas faturadas do Google Cloud.
+2. Em **Motor de IA & API**, escolha **Google Gemini (via API Key)** como Provedor de Análise e cole sua chave no bloco Google Gemini.
+3. Selecione `gemini-2.5-flash` (rápido para reuniões ao vivo) ou `gemini-2.5-pro`, clique em **Testar Gemini** e depois em **Salvar**.
+
+---
+
+## Parte 3 — Uso SEM API Externa Paga (Custo Zero com Claude ou Antigravity)
+
+Mesmo sem nenhuma chave de API paga, a transcrição do áudio da reunião continua funcionando gratuitamente via **FFmpeg + Python SpeechRecognition** local. Para a análise de auditoria, use qualquer uma das 3 opções abaixo:
+
+### 3.1 Modo Sem API A — Usando com o Antigravity Direto na IDE
+Todas as falas da reunião são salvas em tempo real em `projetos_auditoria/sessoes/<id>.json`. Ao abrir a pasta do projeto no **Antigravity**:
+1. Clique no botão **`⚡ Claude / Antigravity (Sem API)`** na barra do Mapeamento Ao Vivo.
+2. Clique em **`📋 Copiar Comando para o Chat do Antigravity`** e cole no chat do Antigravity na IDE:
    > *"Leia a sessão ativa em `projetos_auditoria/sessoes/<id>.json`, analise as últimas falas da transcrição segundo COSO/SOX/IIA/IPE e atualize o arquivo JSON da sessão adicionando novos insights em `questions`, `risks`, `controls` e `pbcList`."*
-5. Assim que o Antigravity atualizar o arquivo, clique em **`🔄 Sincronizar Insights do Antigravity (Disco)`** no modal do AuditPrompter. Todos os novos cards pareados, riscos RCM, controles e itens da Carta PBC aparecerão imediatamente na tela!
+3. Assim que o Antigravity atualizar o arquivo, clique em **`🔄 Sincronizar Insights do Antigravity (Disco)`** para exibir todos os novos cards pareados, riscos, controles e itens PBC na tela!
 
-### Pós-Reunião com o Antigravity:
-Você também pode pedir no chat do Antigravity:
-- *"Revise toda a transcrição da sessão ativa em `projetos_auditoria/` e preencha o fluxo 5W2H completo (`walkthroughSteps`), a Matriz de Riscos e Controles (`risks` e `controls`) e a Carta Formal PBC (`pbcList`)."*
-- Depois clique em **`🔄 Sincronizar Insights do Antigravity (Disco)`** e exporte a **Carta PBC em Word (`.docx`)** ou a **Planilha Completa em Excel (`.xlsx`)** na aba **Relatórios & Carta PBC**.
+### 3.2 Modo Sem API B — Usando com o Claude.ai Gratuito no Navegador
+1. Clique no botão **`⚡ Claude / Antigravity (Sem API)`** na barra do Mapeamento Ao Vivo.
+2. Clique em **`📋 1. Copiar Prompt Completo p/ Claude.ai`** (copia o contexto do processo, as falas recentes `[T1]`, `[T2]`... e o esquema JSON).
+3. Abra **[claude.ai](https://claude.ai)** no navegador, cole o prompt (`Ctrl+V`) e envie.
+4. Copie a resposta JSON gerada pelo Claude, cole no campo do modal no AuditPrompter e clique em **`📥 Aplicar Insights na Tela`**.
 
----
-
-## Modo 2 — Usando com o Claude.ai Gratuito no Navegador (Copiar & Colar Inteligente)
-
-Você pode usar sua conta gratuita em **[claude.ai](https://claude.ai)** (sem pagar API da Anthropic) através da ponte integrada no sistema:
-
-### Passo a Passo:
-1. Durante ou após um bloco de explicação do auditado, clique no botão **`⚡ Claude / Antigravity (Sem API)`** na barra do Mapeamento Ao Vivo.
-2. Clique em **`📋 1. Copiar Prompt Completo p/ Claude.ai`**.
-   - O AuditPrompter monta automaticamente o prompt de auditoria com o escopo do processo, checklist do walkthrough, falas numeradas (`[T1]`, `[T2]`, etc.) e o esquema JSON exato.
-3. Abra o **[claude.ai](https://claude.ai)** em outra aba, cole o prompt (`Ctrl+V`) e envie.
-4. Copie a resposta JSON gerada pelo Claude, volte ao modal do AuditPrompter, cole no campo **"2. Cole aqui a resposta JSON do Claude.ai"** e clique em **`📥 Aplicar Insights na Tela`**.
-5. O AuditPrompter criará automaticamente:
-   - Os **cards pareados** (`Assunto Discutido` à esquerda + `O que Perguntar & Pedir na Tela (IPE)` à direita);
-   - Os **Riscos** e **Controles** na Matriz RCM;
-   - Os **Pontos em Aberto** e sugestões para a **Carta PBC**.
+### 3.3 Modo Sem API C — Motor Especialista Local Integrado (100% Offline)
+Em **Motor de IA & API**, selecione **`Motor Local + Ponte Claude.ai / Antigravity (100% Gratuito — Sem API Paga)`**. O motor local analisa cada fala do auditado e gera automaticamente cards pareados, riscos e controles para:
+- **Aprovações fora do sistema / Bypass** (WhatsApp, e-mail, regularização posterior);
+- **Conflitos de Segregação de Funções (SoD)**;
+- **Planilhas manuais sem revisão independente (Risco de IPE)**;
+- **Usuários compartilhados ou genéricos (Violação de ITGC)**;
+- **Etapas sem aprovação ou sem trava sistêmica**.
 
 ---
 
-## Modo 3 — Motor Especialista Local Integrado (100% Automático e Offline)
+## Parte 4 — Gestão de Projetos, Histórico e Exportação (.docx / .xlsx)
 
-Se você não quiser alternar para o Claude.ai nem para o chat do Antigravity durante a entrevista, o AuditPrompter possui um **Motor Especialista Local** embutido em `app.js`.
-
-### Como Ativar:
-1. No menu lateral esquerdo, clique em **Motor de IA & API**.
-2. Em **Provedor de Análise**, selecione:
-   **`Motor Local + Ponte Claude.ai / Antigravity (100% Gratuito — Sem API Paga)`** e clique em **Salvar**.
-3. Enquanto o auditado fala, o motor local detecta automaticamente padrões críticos de auditoria e gera cards pareados, riscos e controles na hora:
-   - **Bypass / Aprovação fora do sistema** (aprovações por WhatsApp, e-mail, regularização posterior);
-   - **Conflitos de Segregação de Funções (SoD)** (mesma área altera dados bancários/cadastro e aprova ou paga);
-   - **Fragilidades de IPE em Planilhas** (extração para Excel com filtro/edição manual sem revisão independente);
-   - **Violações de ITGC / Acesso** (usuário compartilhado, senha genérica, perda de trilha de auditoria);
-   - **Etapas sem aprovação ou sem trava sistêmica** (sondagem automática de controle compensatório e pedido de evidência TOD na tela).
+- **Projetos & Histórico:** Crie projetos (`AUD-2026-01`), agrupe várias reuniões no mesmo projeto, pesquise termos falados em qualquer reunião anterior e retome sessões com 1 clique.
+- **Carta Formal PBC / RFI em Word (`.docx`):** Documento executivo em paisagem com numeração `PBC-001`, 5 categorias IIA/COSO/SOX, Pontos em Aberto e **Protocolo Metodológico de IPE**.
+- **Papel de Trabalho Completo (`.docx`) e Planilha Multi-Abas (`.xlsx`):** Exportação nativa do Walkthrough (TOD + 5W2H + Matriz RCM) e planilha Excel com aba de controle de status para o auditado preencher.
 
 ---
 
-## Modo 4 (Bônus) — Usando Chave Gratuita do Google AI Studio (Gemini Free Tier)
+## Quadro Comparativo Geral: Com API vs. Sem API Externa
 
-Caso queira chamadas automáticas de API na nuvem sem cadastrar cartão de crédito:
-1. Acesse **[aistudio.google.com/apikey](https://aistudio.google.com/apikey)** com sua conta Google pessoal e clique em **Create API Key** (plano gratuito do Google AI Studio).
-2. No AuditPrompter, abra **Motor de IA & API** no menu lateral.
-3. Escolha **Google Gemini** como provedor, cole a chave `AIzaSy...` no campo do Gemini (`gemini-2.5-flash`) e clique em **Salvar**.
-
----
-
-## Resumo Rápido: Qual Modo Escolher?
-
-| Cenário do Aluno | Modo Recomendado | Custo |
-| :--- | :--- | :---: |
-| Quer análise ao vivo rápida durante a call sem sair da tela | **Modo 3 (Motor Local)** + **Modo 2 (Claude.ai)** nos pontos críticos | **R$ 0,00** |
-| Está com o projeto aberto no **Antigravity** | **Modo 1 (Antigravity lendo `projetos_auditoria/`)** | **R$ 0,00** |
-| Quer usar o **Claude Sonnet** gratuitamente pelo navegador | **Modo 2 (Botão `⚡ Claude / Antigravity`)** | **R$ 0,00** |
-| Quer API automática gratuita em nuvem | **Modo 4 (Google AI Studio — Gemini Flash Free Tier)** | **R$ 0,00** |
+| Modalidade | Configuração em `Motor de IA & API` | Como Gera os Insights e Relatórios | Custo de API |
+| :--- | :--- | :--- | :---: |
+| **COM API — Anthropic Claude** | Provedor: **Anthropic Claude** + chave `sk-ant-...` | 100% automático após pausa na fala + consolidação de PBC/Ata com 1 clique | Créditos API Anthropic |
+| **COM API — Google Gemini** | Provedor: **Google Gemini** + chave `AIzaSy...` | 100% automático via nuvem Google (aceita Free Tier do Google AI Studio ou pago) | Grátis (Free Tier) ou Pago |
+| **SEM API — Antigravity IDE** | Provedor: **Motor Local + Ponte** | Agente na IDE lê/atualiza `projetos_auditoria/` + botão **Sincronizar do Disco** | **R$ 0,00 (Sem API)** |
+| **SEM API — Claude.ai Web** | Provedor: **Motor Local + Ponte** | Botão copia prompt pronto com a transcrição e injeta o JSON do Claude na tela | **R$ 0,00 (Sem API)** |
+| **SEM API — Motor Local** | Provedor: **Motor Local + Ponte** | Regras COSO/SOX/IIA/IPE instantâneas + transcrição local Python/FFmpeg | **R$ 0,00 (100% Local)** |
