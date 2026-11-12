@@ -1,4 +1,11 @@
+<p align="center">
+  <a href="https://aiauditor.com.br"><img src="docs/img/auditor-do-futuro.png" alt="Auditor do Futuro" width="380"></a>
+</p>
+
 # AuditPrompter AI — Teleprompter & Copiloto de Auditoria Interna Ao Vivo
+
+**Criado por [Jefferson Cavalcante](https://www.linkedin.com/in/jefferson-pereira/) — [Auditor do Futuro](https://aiauditor.com.br).** Gratuito e de código aberto.
+[Treinamentos](https://aiauditor.com.br/cursos/) · [Mentoria](https://aiauditor.com.br/mentoria/) · [Para times de auditoria](https://aiauditor.com.br/solucoes/) · [Ebook Método 3X](https://ebook.aiauditor.com.br/) · [LinkedIn](https://www.linkedin.com/in/jefferson-pereira/)
 
 Aplicação web local para condução de entrevistas de **Mapeamento de Processos**, **Walkthroughs (Test of Design — TOD)** e avaliação de **Controles Internos** alinhada às metodologias **COSO ICIF-2013**, **SOX (PCAOB AS 2201)**, **IIA (IPPF / 3 Linhas)**, **ITGC** e **IPE (Information Produced by the Entity)**.
 
@@ -90,4 +97,20 @@ Para habilitar chamadas diretas via chave de API (opcional):
 - `templates.js` — Biblioteca de templates de processos (Compras/P2P, Financeiro, TI/Acessos, RH/Folha, etc.) com perguntas roteirizadas, riscos e controles padrão.
 - `export_builder.py` — Gerador de relatórios corporativos em `.docx` (`python-docx`) e `.xlsx` (`openpyxl`).
 - `index.html` & `styles.css` — Interface limpa com menu lateral e visão pareada de teleprompter.
+
+---
+
+## Quem criou
+
+O AuditPrompter é um projeto do **Auditor do Futuro**, de **Jefferson Cavalcante** — auditor e instrutor de IA aplicada à auditoria interna.
+
+| | |
+|---|---|
+| 🎬 **Treinamentos** (Claude e Copilot para auditoria) | https://aiauditor.com.br/cursos/ |
+| 👤 **Mentoria anual** | https://aiauditor.com.br/mentoria/ |
+| 🏢 **Soluções para times de auditoria** (Método 3X, in company) | https://aiauditor.com.br/solucoes/ |
+| 📘 **Ebook: Método 3X** | https://ebook.aiauditor.com.br/ |
+| 📊 **Diagnóstico gratuito da sua auditoria** | https://aiauditor.com.br/diagnostico/ |
+| 💼 **LinkedIn** | https://www.linkedin.com/in/jefferson-pereira/ |
+| 💬 **Contato** | https://aiauditor.com.br/jefferson/ |
 

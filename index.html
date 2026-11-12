@@ -3,10 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AuditPrompter — Assistente de Auditoria Interna</title>
+  <title>AuditPrompter — Auditor do Futuro</title>
+  <meta name="author" content="Jefferson Cavalcante — Auditor do Futuro (aiauditor.com.br)" />
+  <link rel="icon" type="image/png" href="logo-af.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -14,10 +16,10 @@
     <!-- LEFT SIDEBAR NAVIGATION -->
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <span class="status-led" id="liveStatusDot"></span>
-        <div>
-          <div class="brand-name">AuditPrompter</div>
-          <div class="brand-sub">Auditoria &amp; Controles</div>
+        <img class="brand-mark" src="logo-af.png" alt="Auditor do Futuro" width="36" height="36" />
+        <div class="brand-text">
+          <div class="brand-name">AuditPrompter <span class="status-led" id="liveStatusDot" title="Aceso durante a captura de áudio"></span></div>
+          <button class="brand-sub brand-by" id="btnAboutTop" type="button" title="Quem criou esta ferramenta">por <strong>Auditor do Futuro</strong></button>
         </div>
       </div>
 
@@ -88,6 +90,16 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           <span>Configurações de IA</span>
           <span id="apiKeyStatusBadge" class="status-tag">Local</span>
+        </button>
+
+        <!-- Assinatura do criador -->
+        <button class="creator-card" id="btnAbout" type="button" title="Quem criou, treinamentos, mentoria e contato">
+          <img src="logo-af.png" alt="" width="26" height="26" />
+          <span class="creator-text">
+            <span class="creator-label">Criado por</span>
+            <span class="creator-name">Auditor do Futuro</span>
+          </span>
+          <span class="creator-arrow">→</span>
         </button>
       </div>
     </aside>
@@ -795,6 +807,54 @@
       <div class="modal-footer">
         <button class="btn-ghost" data-close-modal="copilotBridgeModal">Fechar</button>
         <button class="btn-solid" id="btnBridgeApplyJson" type="button">📥 Aplicar Insights na Tela</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SOBRE / QUEM CRIOU -->
+  <div class="modal-backdrop hidden" id="aboutModal">
+    <div class="modal-card narrow about-card">
+      <div class="about-hero">
+        <button class="btn-close about-close" data-close-modal="aboutModal" aria-label="Fechar">✕</button>
+        <div class="about-brand">
+          <img src="logo-af.png" alt="Auditor do Futuro" width="52" height="52" />
+          <div>
+            <div class="about-brand-name">Auditor do Futuro</div>
+            <div class="about-brand-url">aiauditor.com.br</div>
+          </div>
+        </div>
+        <div class="about-headline">IA aplicada à <span>auditoria interna</span>.</div>
+        <p class="about-lead">O AuditPrompter foi criado por <strong>Jefferson Cavalcante</strong>, auditor e instrutor. É gratuito e de código aberto: use, adapte e compartilhe.</p>
+      </div>
+      <div class="modal-body about-body">
+        <div class="about-section-title">Aprenda a aplicar IA na auditoria</div>
+        <a class="about-link primary" href="https://aiauditor.com.br/cursos/" target="_blank" rel="noopener">
+          <span class="about-ico">🎬</span><span><strong>Treinamentos</strong><small>Claude e Copilot para auditoria interna</small></span><span class="about-go">↗</span>
+        </a>
+        <a class="about-link" href="https://aiauditor.com.br/mentoria/" target="_blank" rel="noopener">
+          <span class="about-ico">👤</span><span><strong>Mentoria anual</strong><small>Encontros individuais e aula mensal em grupo</small></span><span class="about-go">↗</span>
+        </a>
+        <a class="about-link" href="https://aiauditor.com.br/solucoes/" target="_blank" rel="noopener">
+          <span class="about-ico">🏢</span><span><strong>Para o seu time de auditoria</strong><small>Método 3X, implantação e treinamento in company</small></span><span class="about-go">↗</span>
+        </a>
+        <a class="about-link" href="https://ebook.aiauditor.com.br/" target="_blank" rel="noopener">
+          <span class="about-ico">📘</span><span><strong>Ebook: Método 3X</strong><small>10 capítulos para aplicar IA na auditoria</small></span><span class="about-go">↗</span>
+        </a>
+        <a class="about-link" href="https://aiauditor.com.br/diagnostico/" target="_blank" rel="noopener">
+          <span class="about-ico">📊</span><span><strong>Diagnóstico gratuito da sua auditoria</strong><small>10 perguntas, 3 minutos</small></span><span class="about-go">↗</span>
+        </a>
+
+        <div class="about-section-title">Fale com o Jefferson</div>
+        <a class="about-link" href="https://www.linkedin.com/in/jefferson-pereira/" target="_blank" rel="noopener">
+          <span class="about-ico in">in</span><span><strong>LinkedIn</strong><small>Posts sobre IA na auditoria interna — siga e mande mensagem</small></span><span class="about-go">↗</span>
+        </a>
+        <a class="about-link" href="https://aiauditor.com.br/jefferson/" target="_blank" rel="noopener">
+          <span class="about-ico">💬</span><span><strong>Contato e WhatsApp</strong><small>aiauditor.com.br/jefferson</small></span><span class="about-go">↗</span>
+        </a>
+        <a class="about-link" href="https://github.com/jeffersoncp21/auditprompter-ai" target="_blank" rel="noopener">
+          <span class="about-ico">⭐</span><span><strong>Código e manual no GitHub</strong><small>Instalação passo a passo e novidades</small></span><span class="about-go">↗</span>
+        </a>
+        <p class="hint-text about-note">Os links abrem no navegador. Esta janela não envia nenhum dado das suas reuniões.</p>
       </div>
     </div>
   </div>

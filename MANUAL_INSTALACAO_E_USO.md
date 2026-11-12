@@ -1,6 +1,10 @@
+![Auditor do Futuro](docs/img/auditor-do-futuro.png)
+
 # AuditPrompter AI — Manual de Instalação e Uso
 
 **Teleprompter e copiloto de auditoria interna ao vivo.** Este manual leva você do zero (computador sem nada instalado) até a primeira reunião com o programa funcionando, e depois mostra o uso no dia a dia.
+
+Criado por **Jefferson Cavalcante — Auditor do Futuro** · https://aiauditor.com.br
 
 Repositório oficial: **https://github.com/jeffersoncp21/auditprompter-ai**
 
@@ -16,6 +20,7 @@ Repositório oficial: **https://github.com/jeffersoncp21/auditprompter-ai**
 | **4. Depois da reunião** | Valida riscos, gera a carta PBC e o papel de trabalho | — |
 | **5. Problemas comuns** | Resolve os erros mais frequentes | — |
 | **6. Dados e privacidade** | Entende onde tudo fica gravado e o que sai do computador | — |
+| **7. Quem criou** | Conhece o Auditor do Futuro: treinamentos, mentoria e contato | — |
 
 > **Leia isto primeiro.** O AuditPrompter roda **no seu computador** (Windows 10 ou 11). Ele não é um site: você instala uma vez e abre com dois cliques. As ferramentas de IA (Claude, Gemini, Antigravity) entram em dois momentos diferentes: podem **ajudar a instalar** (Parte 1) e podem ser o **motor que gera os insights** (Parte 2). Uma coisa não depende da outra.
 
@@ -563,3 +568,39 @@ Copie periodicamente a pasta `projetos_auditoria` para um local seguro da sua or
 ## 6.5 Remover o programa
 
 Apague a pasta do programa. Para remover também os dados e as chaves, apague as pastas `AuditPrompter` dentro de `%LOCALAPPDATA%` e de `%APPDATA%`. **Essa exclusão não tem volta:** faça a cópia de segurança antes.
+
+---
+
+# Parte 7 — Quem criou: Auditor do Futuro
+
+O AuditPrompter foi criado por **Jefferson Cavalcante**, auditor e instrutor de IA aplicada à auditoria interna, à frente do **Auditor do Futuro**. A ferramenta é gratuita e de código aberto: use, adapte e compartilhe com o seu time.
+
+## 7.1 Onde encontrar dentro do programa
+
+A marca aparece no topo do menu lateral (**1**) e no cartão **Criado por Auditor do Futuro** (**2**), no rodapé do menu.
+
+![Menu lateral com a marca Auditor do Futuro no topo e o cartão do criador no rodapé](docs/img/18-marca-no-menu.png)
+
+Clicar em qualquer um dos dois abre a janela com os treinamentos, a mentoria e os canais de contato:
+
+![Janela Sobre, com treinamentos, mentoria, soluções para times e contato](docs/img/17-sobre-auditor-do-futuro.png)
+
+## 7.2 Treinamentos, mentoria e conteúdo
+
+| O que é | Para quem | Link |
+|---|---|---|
+| **Treinamentos** | Quem quer aplicar Claude e Copilot na auditoria interna | https://aiauditor.com.br/cursos/ |
+| **Mentoria anual** | Auditores que querem acompanhamento individual | https://aiauditor.com.br/mentoria/ |
+| **Soluções para times** | Áreas de auditoria: Método 3X, implantação e in company | https://aiauditor.com.br/solucoes/ |
+| **Ebook: Método 3X** | Quem quer começar lendo | https://ebook.aiauditor.com.br/ |
+| **Diagnóstico gratuito** | Quem quer avaliar a auditoria antes de colocar IA | https://aiauditor.com.br/diagnostico/ |
+
+## 7.3 Contato e redes
+
+| Canal | Endereço |
+|---|---|
+| **LinkedIn** | https://www.linkedin.com/in/jefferson-pereira/ |
+| **Site e contato por WhatsApp** | https://aiauditor.com.br/jefferson/ |
+| **Código e novidades da ferramenta** | https://github.com/jeffersoncp21/auditprompter-ai |
+
+> **Gostou da ferramenta?** Siga o Jefferson no LinkedIn para acompanhar novas versões e conteúdos sobre IA na auditoria interna, e compartilhe o link do GitHub com outros auditores.

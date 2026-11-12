@@ -1520,6 +1520,63 @@ kbd { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; background: v
 /* ============================================================================
    v2 — locutores, prévia do insight, importação, prints, consolidado, encerramento
    ============================================================================ */
+/* --- Marca do criador: Auditor do Futuro (aiauditor.com.br) --- */
+:root { --af-lime: #a3e635; --af-cyan: #00d9ff; --af-violet: #8b5cf6; --af-ink: #07070c; }
+.brand-mark { border-radius: 11px; flex-shrink: 0; box-shadow: 0 0 16px rgba(163, 230, 53, 0.28); }
+.brand-text { min-width: 0; }
+.brand-name { display: flex; align-items: center; gap: 7px; }
+.brand-by { background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; text-align: left; }
+.brand-by strong { color: var(--text-secondary); font-weight: 600; }
+.brand-by:hover strong { text-decoration: underline; }
+
+.creator-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 8px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  border: 1px solid #1f2937;
+  background: var(--af-ink);
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+.creator-card::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; background: linear-gradient(90deg, var(--af-lime), var(--af-cyan) 45%, var(--af-violet)); }
+.creator-card img { border-radius: 8px; flex-shrink: 0; }
+.creator-text { display: flex; flex-direction: column; line-height: 1.15; flex: 1; min-width: 0; }
+.creator-label { font-family: 'JetBrains Mono', monospace; font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--af-lime); }
+.creator-name { font-family: 'Unbounded', 'Inter', sans-serif; font-size: 0.72rem; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
+.creator-arrow { color: var(--af-lime); font-weight: 700; }
+.creator-card:hover { border-color: var(--af-lime); }
+
+.about-card { padding: 0; overflow: hidden; display: flex; flex-direction: column; max-width: 520px; }
+.about-hero { position: relative; background: var(--af-ink); color: #fff; padding: 22px 24px 18px; background-image: radial-gradient(circle at 85% 0%, rgba(0, 217, 255, 0.16), transparent 55%), radial-gradient(circle at 0% 100%, rgba(163, 230, 53, 0.12), transparent 50%); }
+.about-hero::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 3px; background: linear-gradient(90deg, var(--af-lime), var(--af-cyan) 45%, var(--af-violet)); }
+.about-close { position: absolute; top: 12px; right: 12px; color: #cbd5e1; }
+.about-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.about-brand img { border-radius: 15px; box-shadow: 0 0 26px rgba(163, 230, 53, 0.35); }
+.about-brand-name { font-family: 'Unbounded', 'Inter', sans-serif; font-weight: 700; font-size: 1.05rem; letter-spacing: -0.02em; }
+.about-brand-url { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--af-lime); }
+.about-headline { font-family: 'Unbounded', 'Inter', sans-serif; font-weight: 700; font-size: 1.12rem; line-height: 1.25; letter-spacing: -0.02em; margin-bottom: 8px; }
+.about-headline span { background: linear-gradient(115deg, var(--af-lime) 5%, var(--af-cyan) 55%, var(--af-violet) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.about-lead { font-size: 0.8rem; line-height: 1.5; color: #cbd5e1; }
+.about-lead strong { color: #fff; }
+.about-body { gap: 7px; }
+.about-section-title { font-family: 'JetBrains Mono', monospace; font-size: 0.64rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-muted); margin-top: 6px; }
+.about-link { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border: 1px solid var(--border-line); border-radius: 8px; text-decoration: none; color: var(--text-main); background: var(--bg-pane); }
+.about-link:hover { border-color: var(--af-lime); background: var(--bg-elevated); }
+.about-link.primary { border-color: #84cc16; box-shadow: inset 3px 0 0 var(--af-lime); }
+.about-link > span:nth-child(2) { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 0.82rem; }
+.about-link small { font-size: 0.7rem; color: var(--text-muted); font-weight: 400; }
+.about-ico { width: 28px; text-align: center; font-size: 1.05rem; flex-shrink: 0; }
+.about-ico.in { font-weight: 800; font-size: 0.8rem; color: #fff; background: #0a66c2; border-radius: 5px; width: 24px; height: 24px; line-height: 24px; margin: 0 2px; }
+.about-go { color: var(--text-muted); font-size: 0.85rem; }
+.about-note { margin-top: 4px; }
+
 .btn-close-meeting { border-color: var(--status-red); color: var(--status-red); font-weight: 600; white-space: nowrap; }
 .btn-close-meeting:hover { background: var(--badge-critica-bg); }
 

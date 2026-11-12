@@ -37,7 +37,8 @@ const STATIC_FILES = {
   '/app.js': { file: 'app.js', type: 'application/javascript; charset=utf-8' },
   '/templates.js': { file: 'templates.js', type: 'application/javascript; charset=utf-8' },
   '/extras.js': { file: 'extras.js', type: 'application/javascript; charset=utf-8' },
-  '/styles.css': { file: 'styles.css', type: 'text/css; charset=utf-8' }
+  '/styles.css': { file: 'styles.css', type: 'text/css; charset=utf-8' },
+  '/logo-af.png': { file: 'logo-af.png', type: 'image/png' }
 };
 
 const MODELS_WITH_FALLBACK = new Set(['claude-opus-5-5', 'claude-sonnet-5-5']);
@@ -1388,6 +1389,7 @@ server.listen(PORT, HOST, () => {
   const url = `http://localhost:${PORT}`;
   console.log('==============================================================');
   console.log('  AUDITPROMPTER - Copiloto & Teleprompter de Auditoria');
+  console.log('  Criado por Auditor do Futuro (Jefferson Cavalcante) - aiauditor.com.br');
   console.log(`  Servidor local ativo em: ${url} (somente este computador)`);
   console.log(`  Chaves em: ${CONFIG_PATH}`);
   console.log(`  Dados das auditorias em: ${PROJECTS_DIR}`);

@@ -651,6 +651,17 @@ document.addEventListener('DOMContentLoaded', () => {
   on('btnScreenShot', 'click', () => markMoment(null, { requireShot: true }));
   on('btnCloseMeeting', 'click', openClosingReview);
 
+  // Assinatura do criador (Auditor do Futuro)
+  const openAbout = () => $('aboutModal') && $('aboutModal').classList.remove('hidden');
+  on('btnAbout', 'click', openAbout);
+  on('btnAboutTop', 'click', openAbout);
+  on('aboutModal', 'click', (e) => {
+    if (e.target === $('aboutModal')) $('aboutModal').classList.add('hidden');
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && $('aboutModal')) $('aboutModal').classList.add('hidden');
+  });
+
   renderSpeakerBar();
 });
 
